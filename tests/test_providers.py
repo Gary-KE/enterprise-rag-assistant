@@ -162,3 +162,16 @@ def test_error_includes_provider_reason_but_masks_tokens():
     with pytest.raises(ProviderError) as err:
         OpenAICompatibleLLM("https://x.test", "k", "m", transport=t2, sleep=no_sleep).complete("s", "u")
     assert token not in str(err.value) and "[redacted]" in str(err.value)
+
+
+def test_quota_exhausted_is_not_retried():
+    t, seen = transport([(429, {"error": {"message": "You exceeded your current quota, please check your plan"}})])
+    with pytest.raises(ProviderError, match="quota exhausted"):
+        OpenAICompatibleLLM("https://x.test", "k", "m", transport=t, sleep=no_sleep).complete("s", "u")
+    assert len(seen) == 1
+
+
+def test_plain_rate_limit_is_still_retried():
+    t, seen = transport([(429, {"error": {"message": "Too many requests"}}), (200, {"choices": [{"message": {"content": "ok"}}]})])
+    assert OpenAICompatibleLLM("https://x.test", "k", "m", transport=t, sleep=no_sleep).complete("s", "u") == "ok"
+    assert len(seen) == 2

@@ -54,6 +54,9 @@ class _Client:
         for attempt in range(self.attempts):
             try:
                 resp = self.http.post(path, json=payload)
+                if resp.status_code == 429 and "quota" in _reason(resp).lower():
+                    # Quota exhausted is not a momentary rate limit: retrying only burns more quota.
+                    raise ProviderError(f"{path} failed with HTTP 429 (quota exhausted): {_reason(resp)}")
                 if resp.status_code in RETRY_STATUS:
                     last_error = f"HTTP {resp.status_code}: {_reason(resp)}"
                 elif resp.status_code >= 400:
