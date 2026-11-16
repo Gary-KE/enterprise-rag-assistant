@@ -86,10 +86,16 @@ class OpenAICompatibleEmbedder(_Client):
             payload["dimensions"] = self.dimensions
         data = self._post("/embeddings", payload)
         try:
-            rows = sorted(data["data"], key=lambda r: r["index"])
+            rows = data["data"]
+            # Some providers (e.g. Gemini's compatibility layer) omit "index"; then list order is the order.
+            if all("index" in r for r in rows):
+                rows = sorted(rows, key=lambda r: r["index"])
             vectors = [r["embedding"] for r in rows]
         except (KeyError, TypeError) as exc:
-            raise ProviderError("unexpected embeddings response shape") from exc
+            shape = {k: type(v).__name__ for k, v in data.items()} if isinstance(data, dict) else type(data).__name__
+            first = data.get("data", [None])[0] if isinstance(data, dict) and data.get("data") else None
+            first_keys = sorted(first.keys()) if isinstance(first, dict) else None
+            raise ProviderError(f"unexpected embeddings response shape: top-level {shape}, first item keys {first_keys}") from exc
         if len(vectors) != len(texts):
             raise ProviderError(f"asked for {len(texts)} embeddings, got {len(vectors)}")
         if self.dimensions and any(len(v) != self.dimensions for v in vectors):

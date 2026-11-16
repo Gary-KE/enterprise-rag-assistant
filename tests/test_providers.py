@@ -136,3 +136,18 @@ def test_index_round_trip(pipeline, tmp_path):
     fresh = MemoryStore()
     assert load_index(path, fresh) == (len(docs), len(chunks))
     assert fresh.keyword_search("seventy-two hours breach", 3, 0)[0][0].page == 3
+
+
+def test_embedder_accepts_items_without_index():
+    t, _ = transport([(200, {"object": "list", "data": [{"object": "embedding", "embedding": [1, 0]},
+                                                         {"object": "embedding", "embedding": [0, 1]}]})])
+    emb = OpenAICompatibleEmbedder("https://x.test", "k", "e", dimensions=2, transport=t, sleep=no_sleep)
+    assert emb.embed(["a", "b"]) == [[1, 0], [0, 1]]
+
+
+def test_embedder_error_names_the_shape_but_not_the_data():
+    t, _ = transport([(200, {"embeddings": [{"values": [0.123456]}]})])
+    emb = OpenAICompatibleEmbedder("https://x.test", "SECRET", "e", transport=t, sleep=no_sleep)
+    with pytest.raises(ProviderError) as err:
+        emb.embed(["a"])
+    assert "embeddings" in str(err.value) and "0.123456" not in str(err.value) and "SECRET" not in str(err.value)
