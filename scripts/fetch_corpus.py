@@ -39,16 +39,24 @@ def main() -> int:
     with httpx.Client(headers=HEADERS, timeout=60, follow_redirects=True) as http:
         for src in sources:
             key, url = src["key"], src["url"]
-            if not url.startswith("https://"):
-                print(f"[{key}] refusing non-HTTPS url")
-                failed = True
-                continue
-            resp = http.get(url)
-            if resp.status_code != 200:
-                print(f"[{key}] HTTP {resp.status_code} for {url}")
-                failed = True
-                continue
-            data = resp.content
+            committed = ROOT / src["file"] if src.get("file") else None
+            if committed and committed.exists():
+                data = committed.read_bytes()
+                origin = f"committed copy {src['file']}"
+            else:
+                if not url.startswith("https://"):
+                    print(f"[{key}] refusing non-HTTPS url")
+                    failed = True
+                    continue
+                resp = http.get(url)
+                if resp.status_code != 200:
+                    hint = (" The site may require a browser check: save the PDF from a browser to "
+                            f"{src['file']} and commit it.") if src.get("file") else ""
+                    print(f"[{key}] HTTP {resp.status_code} for {url}.{hint}")
+                    failed = True
+                    continue
+                data = resp.content
+                origin = "download"
             if len(data) > MAX_BYTES:
                 print(f"[{key}] file larger than {MAX_BYTES} bytes")
                 failed = True
@@ -66,7 +74,7 @@ def main() -> int:
                 continue
             (RAW / f"{key}.pdf").write_bytes(data)
             lock[key] = {"sha256": digest, "bytes": len(data), "url": url}
-            print(f"[{key}] ok  {len(data):,} bytes  sha256 {digest[:12]}")
+            print(f"[{key}] ok  {len(data):,} bytes  sha256 {digest[:12]}  ({origin})")
 
     LOCK.write_text(json.dumps(lock, indent=2) + "\n")
     return 1 if failed else 0

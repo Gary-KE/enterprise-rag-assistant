@@ -1,5 +1,5 @@
 {
-  "note": "Public documents in the corpus. Each is downloaded by scripts/fetch_corpus.py; its SHA-256 is recorded in data/corpus.lock.json so a silent change to a source is detected.",
+  "note": "Public documents in the corpus. A copy committed under data/corpus/ is used first; otherwise the file is downloaded from 'url'. Each file's SHA-256 is recorded in data/corpus.lock.json so a silent change is detected.",
   "sources": [
     {
       "key": "dpa",
@@ -9,7 +9,9 @@
       "url": "https://new.kenyalaw.org/akn/ke/act/2019/24/eng@2022-12-31/source.pdf",
       "page_url": "https://new.kenyalaw.org/akn/ke/act/2019/24/eng@2022-12-31",
       "licence": "CC BY-NC-SA 4.0 (Kenya Law). There is no copyright on the legislative content.",
-      "access_level": 0
+      "access_level": 0,
+      "file": "data/corpus/dpa.pdf",
+      "download_note": "Kenya Law serves this PDF behind a browser check, so automated downloads (CI) get HTTP 202 instead of the file. The copy in data/corpus/ was saved from a browser, unmodified."
     }
   ]
 }
