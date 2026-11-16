@@ -111,3 +111,19 @@ def test_real_corpus_has_no_ligatures_after_extraction():
     assert scanned == [] and len(pages) == 32
     assert not any("\ufb00" <= ch <= "\ufb06" for ch in text)
     assert "notification" in text.lower() and "Data Commissioner" in text
+
+
+def test_running_headers_and_page_numbers_are_removed():
+    from rag.ingest.extract import strip_running_lines
+    pages = [(i, f"Act (Cap. 1) Kenya\nBody text {i} here.\n{i}") for i in range(1, 6)]
+    out = strip_running_lines(pages)
+    assert all(t == f"Body text {n} here." for n, t in out)
+
+
+def test_real_corpus_headers_removed():
+    from pathlib import Path
+    pdf = Path(__file__).resolve().parents[1] / "data" / "corpus" / "dpa.pdf"
+    if not pdf.exists():
+        pytest.skip("corpus copy not present")
+    pages, _ = extract_pages(pdf)
+    assert sum("Data Protection Act (Cap. 411C)  Kenya" in t for _, t in pages[5:]) == 0

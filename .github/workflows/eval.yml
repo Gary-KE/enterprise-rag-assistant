@@ -2,6 +2,7 @@ name: Live evaluation (RAGAS)
 
 # Runs the golden set through the real models and scores it with RAGAS plus our own metrics.
 # Needs the repository secret GEMINI_API_KEY (and optionally JINA_API_KEY for the reranker).
+# Started by hand only (Actions tab > Run workflow), so the free-tier quota is not spent on every push.
 # The build fails if any threshold in eval/thresholds.json ("live") is missed.
 
 on:
@@ -11,9 +12,6 @@ on:
         description: "Score only the first N answerable questions with RAGAS (empty = all)"
         required: false
         default: ""
-  push:
-    branches: [main]
-    paths: ["src/**", "eval/**", "data/sources.json", "scripts/**"]
 
 permissions:
   contents: read
@@ -74,7 +72,6 @@ jobs:
         if: steps.keys.outputs.ready == 'true'
         run: |
           LIMIT="${{ github.event.inputs.ragas_limit }}"
-          if [ "${{ github.event_name }}" = "push" ] && [ -z "$LIMIT" ]; then LIMIT=15; fi
           if [ -n "$LIMIT" ]; then
             python scripts/run_eval.py --mode live --ragas --ragas-limit "$LIMIT"
           else

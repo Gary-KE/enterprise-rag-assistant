@@ -16,6 +16,32 @@ def clean_text(text: str) -> str:
     return unicodedata.normalize("NFKC", text)
 
 
+def strip_running_lines(pages: list[tuple[int, str]], min_share: float = 0.5) -> list[tuple[int, str]]:
+    """Remove running headers and footers: a first or last line repeated on at least `min_share` of the
+    pages, and a last line that is only a page number. They would otherwise pollute chunks and quotes."""
+    with_text = [t for _, t in pages if t.strip()]
+    if len(with_text) < 3:
+        return pages
+    firsts: dict[str, int] = {}
+    lasts: dict[str, int] = {}
+    for t in with_text:
+        lines = [l.strip() for l in t.splitlines() if l.strip()]
+        firsts[lines[0]] = firsts.get(lines[0], 0) + 1
+        lasts[lines[-1]] = lasts.get(lines[-1], 0) + 1
+    need = max(3, int(len(with_text) * min_share))
+    heads = {l for l, n in firsts.items() if n >= need}
+    feet = {l for l, n in lasts.items() if n >= need}
+    out = []
+    for no, t in pages:
+        lines = [l for l in t.splitlines() if l.strip()]
+        if lines and lines[0].strip() in heads:
+            lines = lines[1:]
+        if lines and (lines[-1].strip() in feet or lines[-1].strip().isdigit()):
+            lines = lines[:-1]
+        out.append((no, "\n".join(lines)))
+    return out
+
+
 def extract_pages(path: Path) -> tuple[list[tuple[int, str]], list[int]]:
     """Return (pages, scanned_pages). Pages without a usable text layer come back with empty text."""
     suffix = path.suffix.lower()
@@ -33,7 +59,7 @@ def extract_pages(path: Path) -> tuple[list[tuple[int, str]], list[int]]:
                 scanned.append(number)
                 text = ""
             pages.append((number, text))
-        return pages, scanned
+        return strip_running_lines(pages), scanned
     if suffix in {".txt", ".md"}:
         raw = clean_text(path.read_text(encoding="utf-8", errors="replace"))
         # a form feed character starts a new page, so plain-text fixtures can have pages

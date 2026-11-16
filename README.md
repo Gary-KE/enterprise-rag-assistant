@@ -114,7 +114,7 @@ with an error when any is missed, which fails the GitHub Actions build.
 | --- | --- | --- |
 | `ci.yml` → tests | every push | 70+ unit, API, security and evaluation tests |
 | `ci.yml` → offline-eval | every push | Golden quotes exist in the real PDF; the pipeline holds up with stand-in models |
-| `eval.yml` | push to `main`, or by hand | Real models + RAGAS on the golden set; the live gate |
+| `eval.yml` | by hand (saves free-tier quota) | Real models + RAGAS on the golden set; the live gate |
 | `index.yml` | by hand | Loads the corpus into Supabase for the deployed app |
 
 The live thresholds are starting points. After the first real run, they are set just below the measured
