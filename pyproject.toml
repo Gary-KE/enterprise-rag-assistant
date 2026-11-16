@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "enterprise-rag-assistant"
+version = "0.1.0"
+description = "Production-style RAG system: hybrid retrieval, citation enforcement, declining, and an evaluation gate"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "pydantic>=2",
+    "httpx>=0.27",
+    "pypdf>=4",
+    "numpy>=1.26",
+    "pyjwt>=2.8",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.1"]
+dev = ["pytest>=8", "reportlab>=4"]
+ragas = ["ragas>=0.4", "openai>=1"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+rag = ["web/*.html", "web/static/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0c0f15" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <title>Dondoo · cited answers from public Kenyan documents</title>
+  <meta name="description" content="Dondoo answers questions from public Kenyan documents and cites the exact page behind every claim.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/theme.js"></script>
+</head>
+<body>
+  <div class="backdrop" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path fill="#fff" d="M4 17.5c0-4.6 2.2-8.4 6-10.5l1 1.6c-2.3 1.5-3.4 3.3-3.6 5.4H10v5H4v-1.5zm10 0c0-4.6 2.2-8.4 6-10.5l1 1.6c-2.3 1.5-3.4 3.3-3.6 5.4H20v5h-6v-1.5z"/></svg></span>
+      <span class="brand-name">Dondoo</span>
+      <span class="brand-tag">RAG</span>
+    </div>
+    <div class="top-right">
+      <div class="status" id="status" role="status">
+        <span class="dot"></span><span id="status-text" data-i18n="status_checking"></span>
+      </div>
+      <button type="button" class="theme-btn" id="theme-btn" aria-label="Toggle dark mode">
+        <svg class="icon-moon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M21 14.5A8.5 8.5 0 0 1 9.5 3a8.5 8.5 0 1 0 11.5 11.5z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g></svg>
+      </button>
+      <div class="lang" role="group" aria-label="Language / Lugha">
+        <button type="button" class="lang-btn" data-lang="en" aria-pressed="false">EN</button>
+        <button type="button" class="lang-btn" data-lang="sw" aria-pressed="false">SW</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="main-col">
+      <div class="hero">
+        <p class="eyebrow" data-i18n="eyebrow"></p>
+        <h1><span data-i18n="h1a"></span><br><em data-i18n="h1b"></em></h1>
+        <p class="lede" data-i18n="lede"></p>
+      </div>
+
+      <form class="ask" id="ask-form" autocomplete="off">
+        <label for="question" class="visually-hidden" data-i18n="question_label"></label>
+        <textarea id="question" name="question" rows="2" maxlength="1000" required enterkeyhint="send" autocapitalize="sentences"></textarea>
+        <div class="ask-row">
+          <span class="counter" id="counter">0 / 1000</span>
+          <button type="submit" id="ask-btn" class="btn-primary">
+            <span class="btn-label" data-i18n="ask"></span>
+            <kbd>Ctrl ↵</kbd>
+          </button>
+        </div>
+      </form>
+
+      <p class="examples-label" data-i18n="examples"></p>
+      <div class="examples" id="examples"></div>
+
+      <section id="result" class="result" aria-live="polite" hidden></section>
+    </section>
+
+    <aside class="side-col">
+      <div class="panel">
+        <h2 class="panel-title" data-i18n="library"></h2>
+        <p class="panel-sub" id="library-sub"></p>
+        <ul class="library" id="library"></ul>
+      </div>
+      <div class="panel">
+        <h2 class="panel-title" data-i18n="how"></h2>
+        <ol class="pipeline">
+          <li><b data-i18n="p1t"></b><span data-i18n="p1"></span></li>
+          <li><b data-i18n="p2t"></b><span data-i18n="p2"></span></li>
+          <li><b data-i18n="p3t"></b><span data-i18n="p3"></span></li>
+          <li><b data-i18n="p4t"></b><span data-i18n="p4"></span></li>
+          <li><b data-i18n="p5t"></b><span data-i18n="p5"></span></li>
+        </ol>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="foot" data-i18n="footer"></footer>
+
+  <template id="tpl-source">
+    <article class="source">
+      <header class="source-head">
+        <span class="source-marker"></span>
+        <div class="source-meta">
+          <h3 class="source-title"></h3>
+          <p class="source-sub"></p>
+        </div>
+        <a class="source-link" target="_blank" rel="noopener noreferrer"></a>
+      </header>
+      <blockquote class="source-quote"></blockquote>
+    </article>
+  </template>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

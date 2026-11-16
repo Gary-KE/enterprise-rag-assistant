@@ -1,0 +1,36 @@
+# Render blueprint: New > Blueprint > pick this repo. Secrets marked sync: false are entered in the dashboard.
+services:
+  - type: web
+    name: dondoo-rag
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: RAG_PROVIDERS
+        value: http
+      - key: RAG_STORE
+        value: pgvector
+      - key: RAG_LLM_BASE_URL
+        value: https://generativelanguage.googleapis.com/v1beta/openai
+      - key: RAG_LLM_MODEL
+        value: gemini-3.8-flash
+      - key: RAG_EMBED_BASE_URL
+        value: https://generativelanguage.googleapis.com/v1beta/openai
+      - key: RAG_EMBED_MODEL
+        value: gemini-embedding-2
+      - key: RAG_EMBED_DIM
+        value: "768"
+      - key: RAG_TRUSTED_PROXY_HOPS
+        value: "1"
+      - key: RAG_LLM_API_KEY
+        sync: false
+      - key: RAG_EMBED_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: RAG_RERANK_BASE_URL
+        sync: false
+      - key: RAG_RERANK_MODEL
+        sync: false
+      - key: RAG_RERANK_API_KEY
+        sync: false

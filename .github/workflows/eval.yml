@@ -1,0 +1,91 @@
+name: Live evaluation (RAGAS)
+
+# Runs the golden set through the real models and scores it with RAGAS plus our own metrics.
+# Needs the repository secret GEMINI_API_KEY (and optionally JINA_API_KEY for the reranker).
+# The build fails if any threshold in eval/thresholds.json ("live") is missed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ragas_limit:
+        description: "Score only the first N answerable questions with RAGAS (empty = all)"
+        required: false
+        default: ""
+  push:
+    branches: [main]
+    paths: ["src/**", "eval/**", "data/sources.json", "scripts/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-eval
+  cancel-in-progress: true
+
+jobs:
+  live-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RAG_PROVIDERS: http
+      RAG_LLM_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai
+      RAG_LLM_MODEL: ${{ vars.RAG_LLM_MODEL || 'gemini-3.8-flash' }}
+      RAG_EMBED_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai
+      RAG_EMBED_MODEL: ${{ vars.RAG_EMBED_MODEL || 'gemini-embedding-2' }}
+      RAG_EMBED_DIM: ${{ vars.RAG_EMBED_DIM || '768' }}
+      RAG_LLM_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      RAG_EMBED_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      JINA_KEY: ${{ secrets.JINA_API_KEY }}
+    steps:
+      - name: Check the API key is configured
+        id: keys
+        run: |
+          if [ -z "$RAG_LLM_API_KEY" ]; then
+            echo "::notice::GEMINI_API_KEY secret is not set; skipping the live evaluation."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.keys.outputs.ready == 'true'
+      - uses: actions/setup-python@v5
+        if: steps.keys.outputs.ready == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+      - if: steps.keys.outputs.ready == 'true'
+        run: pip install -e ".[dev,ragas]"
+      - name: Use the hosted reranker when its key is set
+        if: steps.keys.outputs.ready == 'true'
+        run: |
+          if [ -n "$JINA_KEY" ]; then
+            {
+              echo "RAG_RERANK_BASE_URL=https://api.jina.ai/v1"
+              echo "RAG_RERANK_MODEL=jina-reranker-v2-base-multilingual"
+              echo "RAG_RERANK_API_KEY=$JINA_KEY"
+            } >> "$GITHUB_ENV"
+          fi
+      - name: Download and verify the corpus
+        if: steps.keys.outputs.ready == 'true'
+        run: |
+          python scripts/fetch_corpus.py
+          python scripts/verify_golden.py
+      - name: Live evaluation, RAGAS and quality gate
+        if: steps.keys.outputs.ready == 'true'
+        run: |
+          LIMIT="${{ github.event.inputs.ragas_limit }}"
+          if [ "${{ github.event_name }}" = "push" ] && [ -z "$LIMIT" ]; then LIMIT=15; fi
+          if [ -n "$LIMIT" ]; then
+            python scripts/run_eval.py --mode live --ragas --ragas-limit "$LIMIT"
+          else
+            python scripts/run_eval.py --mode live --ragas
+          fi
+      - name: Publish the report
+        if: always() && steps.keys.outputs.ready == 'true'
+        run: |
+          if [ -f eval/results/live/report.md ]; then cat eval/results/live/report.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.keys.outputs.ready == 'true'
+        with:
+          name: live-eval
+          path: eval/results/live

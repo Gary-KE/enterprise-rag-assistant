@@ -1,0 +1,9 @@
+Sample Data Protection Act (test fixture). Part I. Preliminary.
+This Act applies to the processing of personal data by a data controller or data processor established in the test territory.
+A data controller means a person who determines the purpose and means of processing of personal data.Part II. Principles.
+Every data controller shall ensure that personal data is processed lawfully, fairly and in a transparent manner.
+Personal data shall be collected for explicit, specified and legitimate purposes and not further processed in an incompatible manner.
+Personal data shall be kept in a form which identifies the data subjects for no longer than is necessary for the purposes for which it was collected.Part III. Breach notification.
+Where personal data has been accessed by an unauthorised person, the data controller shall notify the Commissioner without delay, within seventy-two hours of becoming aware of the breach.
+The data processor shall notify the data controller without delay and where reasonably practicable within forty-eight hours of becoming aware of the breach.Part IV. Rights of a data subject.
+A data subject has a right to be informed of the use to which their personal data is to be put, to access their personal data, to object to the processing of all or part of their personal data, and to correction of false or misleading data.

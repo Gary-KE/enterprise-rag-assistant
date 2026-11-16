@@ -1,0 +1,18 @@
+{
+  "note": "Quality gate. Keys ending in _ms are maximums; all others are minimums. 'live' values are starting points: recalibrate them after the first real run and record the change in the README.",
+  "offline": {
+    "hit_rate@k": 0.6,
+    "decline_accuracy": 0.8
+  },
+  "live": {
+    "hit_rate@k": 0.85,
+    "mrr@k": 0.6,
+    "answer_rate": 0.8,
+    "citation_accuracy": 0.85,
+    "decline_accuracy": 0.9,
+    "ragas_faithfulness": 0.8,
+    "ragas_context_precision": 0.6,
+    "ragas_context_recall": 0.7,
+    "latency_p95_ms": 20000
+  }
+}

@@ -1,0 +1,138 @@
+import json
+
+import httpx
+import pytest
+
+from rag.config import Settings
+from rag.index_io import load_index, save_index
+from rag.models import Chunk, Hit
+from rag.providers.base import ProviderError
+from rag.providers.fake import OverlapReranker
+from rag.providers.http import OpenAICompatibleEmbedder, OpenAICompatibleLLM
+from rag.providers.rerank_http import FallbackReranker, HttpReranker
+from rag.store.memory import MemoryStore
+
+
+def transport(responses):
+    """Serve the given (status, body) pairs in order and record the requests."""
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        status, body = responses[min(len(seen) - 1, len(responses) - 1)]
+        return httpx.Response(status, json=body)
+
+    return httpx.MockTransport(handler), seen
+
+
+def no_sleep(_):
+    pass
+
+
+def test_llm_sends_openai_shape_and_parses_reply():
+    t, seen = transport([(200, {"choices": [{"message": {"content": "Answer [S1]."}}]})])
+    llm = OpenAICompatibleLLM("https://x.test/v1/", "key", "m", transport=t, sleep=no_sleep)
+    assert llm.complete("sys", "user") == "Answer [S1]."
+    req = seen[0]
+    assert req.url.path == "/v1/chat/completions"
+    assert req.headers["authorization"] == "Bearer key"
+    body = json.loads(req.content)
+    assert body["temperature"] == 0 and body["messages"][0]["role"] == "system"
+
+
+def test_llm_retries_rate_limits_then_succeeds():
+    t, seen = transport([(429, {}), (503, {}), (200, {"choices": [{"message": {"content": "ok"}}]})])
+    llm = OpenAICompatibleLLM("https://x.test/v1", "k", "m", transport=t, sleep=no_sleep)
+    assert llm.complete("s", "u") == "ok" and len(seen) == 3
+
+
+def test_llm_gives_up_after_attempts_and_does_not_retry_client_errors():
+    t, seen = transport([(500, {})])
+    with pytest.raises(ProviderError):
+        OpenAICompatibleLLM("https://x.test", "k", "m", attempts=3, transport=t, sleep=no_sleep).complete("s", "u")
+    assert len(seen) == 3
+    t2, seen2 = transport([(401, {"error": "bad key"})])
+    with pytest.raises(ProviderError):
+        OpenAICompatibleLLM("https://x.test", "k", "m", transport=t2, sleep=no_sleep).complete("s", "u")
+    assert len(seen2) == 1
+
+
+def test_error_messages_never_contain_the_api_key():
+    t, _ = transport([(401, {})])
+    with pytest.raises(ProviderError) as err:
+        OpenAICompatibleLLM("https://x.test", "SECRET-KEY-123", "m", transport=t, sleep=no_sleep).complete("s", "u")
+    assert "SECRET-KEY-123" not in str(err.value)
+
+
+def test_embedder_orders_by_index_and_sends_dimensions():
+    t, seen = transport([(200, {"data": [{"index": 1, "embedding": [0, 1]}, {"index": 0, "embedding": [1, 0]}]})])
+    emb = OpenAICompatibleEmbedder("https://x.test", "k", "e", dimensions=2, transport=t, sleep=no_sleep)
+    assert emb.embed(["a", "b"]) == [[1, 0], [0, 1]]
+    assert json.loads(seen[0].content)["dimensions"] == 2
+    assert emb.embed([]) == []
+
+
+def test_embedder_rejects_wrong_size_vectors():
+    t, _ = transport([(200, {"data": [{"index": 0, "embedding": [0.1] * 3072}]})])
+    emb = OpenAICompatibleEmbedder("https://x.test", "k", "e", dimensions=768, transport=t, sleep=no_sleep)
+    with pytest.raises(ProviderError, match="does not match RAG_EMBED_DIM"):
+        emb.embed(["a"])
+
+
+def hits(*texts):
+    return [Hit(chunk=Chunk(f"c{i}", "d", 1, i, t, "h"), fused_score=1 / (i + 1)) for i, t in enumerate(texts)]
+
+
+def test_http_reranker_applies_scores():
+    t, seen = transport([(200, {"results": [{"index": 1, "relevance_score": 0.9}, {"index": 0, "relevance_score": 0.2}]})])
+    r = HttpReranker("https://r.test/v1", "k", "jina-reranker", transport=t, sleep=no_sleep)
+    out = r.rerank("q", hits("first", "second"))
+    assert [h.chunk.text for h in out] == ["second", "first"]
+    assert out[0].relevance == 0.9
+    body = json.loads(seen[0].content)
+    assert body["documents"] == ["first", "second"] and body["top_n"] == 2
+
+
+def test_fallback_reranker_used_when_hosted_one_fails():
+    t, _ = transport([(500, {})])
+    fb = FallbackReranker(HttpReranker("https://r.test", "k", "m", attempts=1, transport=t, sleep=no_sleep), OverlapReranker())
+    out = fb.rerank("breach hours", hits("nothing here", "breach notice within hours"))
+    assert fb.last_used == "fallback" and out[0].chunk.text == "breach notice within hours"
+
+
+def test_config_validation():
+    s = Settings(providers="http")
+    with pytest.raises(ValueError):
+        s.validate()
+    s = Settings(chunk_words=10, chunk_overlap=10)
+    with pytest.raises(ValueError):
+        s.validate()
+    s = Settings(admin_key="short")
+    with pytest.raises(ValueError):
+        s.validate()
+    s = Settings(admin_key="k" * 30, jwt_secret="short")
+    with pytest.raises(ValueError):
+        s.validate()
+    s = Settings(rerank_base_url="https://r.test")
+    with pytest.raises(ValueError):
+        s.validate()
+    Settings().validate()
+
+
+def test_settings_from_env(monkeypatch):
+    monkeypatch.setenv("RAG_MIN_RELEVANCE", "0.25")
+    monkeypatch.setenv("RAG_STRICT_CITATIONS", "true")
+    monkeypatch.setenv("RAG_TRUSTED_PROXY_HOPS", "1")
+    s = Settings.from_env()
+    assert s.min_relevance == 0.25 and s.strict_sentence_citations is True and s.trusted_proxy_hops == 1
+
+
+def test_index_round_trip(pipeline, tmp_path):
+    store = pipeline.store
+    docs = [d for d, _ in store.list_documents(9)]
+    chunks = [store.get_chunk(cid) for cid in store._chunks]
+    path = tmp_path / "index.jsonl"
+    save_index(path, docs, chunks)
+    fresh = MemoryStore()
+    assert load_index(path, fresh) == (len(docs), len(chunks))
+    assert fresh.keyword_search("seventy-two hours breach", 3, 0)[0][0].page == 3
