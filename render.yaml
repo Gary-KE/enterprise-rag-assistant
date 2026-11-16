@@ -13,7 +13,7 @@ services:
       - key: RAG_LLM_BASE_URL
         value: https://generativelanguage.googleapis.com/v1beta/openai
       - key: RAG_LLM_MODEL
-        value: gemini-3.8-flash
+        value: gemini-flash-latest
       - key: RAG_EMBED_BASE_URL
         value: https://generativelanguage.googleapis.com/v1beta/openai
       - key: RAG_EMBED_MODEL

@@ -151,3 +151,14 @@ def test_embedder_error_names_the_shape_but_not_the_data():
     with pytest.raises(ProviderError) as err:
         emb.embed(["a"])
     assert "embeddings" in str(err.value) and "0.123456" not in str(err.value) and "SECRET" not in str(err.value)
+
+
+def test_error_includes_provider_reason_but_masks_tokens():
+    t, _ = transport([(404, {"error": {"message": "models/x is not found for API version v1beta"}})])
+    with pytest.raises(ProviderError, match="is not found"):
+        OpenAICompatibleLLM("https://x.test", "k", "m", transport=t, sleep=no_sleep).complete("s", "u")
+    token = "FAKExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"   # made-up placeholder
+    t2, _ = transport([(400, {"error": {"message": "bad credential " + token}})])
+    with pytest.raises(ProviderError) as err:
+        OpenAICompatibleLLM("https://x.test", "k", "m", transport=t2, sleep=no_sleep).complete("s", "u")
+    assert token not in str(err.value) and "[redacted]" in str(err.value)

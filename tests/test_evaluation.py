@@ -181,3 +181,12 @@ def test_verify_golden_fails_on_a_wrong_quote(tmp_path):
     env = {**os.environ, "RAG_DATA_DIR": str(data), "RAG_GOLDEN": str(golden)}
     v = subprocess.run([sys.executable, "scripts/verify_golden.py"], cwd=ROOT, env=env, capture_output=True, text=True)
     assert v.returncode == 1 and "MISSING" in v.stdout
+
+
+def test_provider_failures_are_not_correct_declines():
+    ok = result("U1", False, declined=True)
+    broken = result("U2", False, declined=True)
+    broken.decline_reason = "llm_unavailable"
+    s = summarise([ok, broken])
+    assert s["decline_accuracy"] == 0.5 and s["provider_errors"] == 1
+    assert check_thresholds(s, {"provider_errors": 0}) == ["provider_errors: 1 is above the maximum 0"]

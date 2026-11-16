@@ -72,6 +72,14 @@ def main() -> int:
 
     print(f"mode={args.mode} llm={settings.llm_model or 'stand-in'} embeddings={settings.embed_model or 'stand-in'} "
           f"dim={settings.embed_dim} reranker={settings.rerank_model or 'baseline'} min_relevance={settings.min_relevance}")
+    if args.mode == "live":
+        from rag.providers.http import OpenAICompatibleLLM
+        try:   # fail in seconds, with the provider's reason, instead of after 58 failed questions
+            OpenAICompatibleLLM(settings.llm_base_url, settings.llm_api_key, settings.llm_model).complete(
+                "Reply with the single word: ok", "ping")
+        except Exception as exc:
+            raise SystemExit(f"preflight: the answer model '{settings.llm_model}' is not usable: {exc}")
+        print("preflight: answer model reachable")
     pipeline = build_indexed_pipeline(settings)
     items = load_golden(GOLDEN)
     results = []

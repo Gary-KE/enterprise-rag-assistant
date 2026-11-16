@@ -15,7 +15,7 @@ jobs:
     env:
       RAG_PROVIDERS: http
       RAG_LLM_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai
-      RAG_LLM_MODEL: ${{ vars.RAG_LLM_MODEL || 'gemini-3.8-flash' }}
+      RAG_LLM_MODEL: ${{ vars.RAG_LLM_MODEL || 'gemini-flash-latest' }}
       RAG_EMBED_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai
       RAG_EMBED_MODEL: ${{ vars.RAG_EMBED_MODEL || 'gemini-embedding-2' }}
       RAG_EMBED_DIM: ${{ vars.RAG_EMBED_DIM || '768' }}

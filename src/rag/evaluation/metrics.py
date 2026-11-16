@@ -87,7 +87,9 @@ def summarise(results: list[ItemResult]) -> dict:
         "mrr@k": round(statistics.fmean([1 / r.first_hit_rank if r.first_hit_rank else 0 for r in ans]), 4) if ans else None,
         "answer_rate": ratio(len(answered), len(ans)),
         "citation_accuracy": ratio(sum(r.citation_correct for r in answered), len(answered)),
-        "decline_accuracy": ratio(sum(r.declined for r in unans), len(unans)),
+        # A decline caused by a provider failure is not a correct decline.
+        "decline_accuracy": ratio(sum(r.declined and r.decline_reason != "llm_unavailable" for r in unans), len(unans)),
+        "provider_errors": sum(r.decline_reason == "llm_unavailable" for r in results),
         "latency_p50_ms": round(percentile(lat, 50), 1),
         "latency_p95_ms": round(percentile(lat, 95), 1),
     }
@@ -99,14 +101,15 @@ def summarise(results: list[ItemResult]) -> dict:
 
 
 def check_thresholds(summary: dict, thresholds: dict) -> list[str]:
-    """Return a list of failures. Keys ending in _ms are maximums; all others are minimums."""
+    """Return a list of failures. Keys ending in _ms, and provider_errors, are maximums; all others are minimums."""
     failures = []
     for key, limit in thresholds.items():
         value = summary.get(key)
+        is_max = key.endswith("_ms") or key == "provider_errors"
         if value is None:
             failures.append(f"{key}: not measured (threshold {limit})")
-        elif key.endswith("_ms") and value > limit:
+        elif is_max and value > limit:
             failures.append(f"{key}: {value} is above the maximum {limit}")
-        elif not key.endswith("_ms") and value < limit:
+        elif not is_max and value < limit:
             failures.append(f"{key}: {value} is below the minimum {limit}")
     return failures

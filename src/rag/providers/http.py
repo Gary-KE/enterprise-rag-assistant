@@ -5,6 +5,7 @@ Check your provider's documentation for its base URL and model names.
 """
 from __future__ import annotations
 
+import re
 import time
 from typing import Callable, Optional
 
@@ -13,6 +14,18 @@ import httpx
 from rag.providers.base import ProviderError
 
 RETRY_STATUS = {429, 500, 502, 503, 504}
+_TOKENISH = re.compile(r"[A-Za-z0-9_.-]{32,}")
+
+
+def _reason(resp: httpx.Response) -> str:
+    """The provider's own error message, shortened, with any long token-like string masked."""
+    try:
+        body = resp.json()
+        err = body.get("error", body) if isinstance(body, dict) else body
+        msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
+    except ValueError:
+        msg = resp.text
+    return _TOKENISH.sub("[redacted]", " ".join(str(msg).split()))[:240]
 
 
 class _Client:
@@ -42,9 +55,9 @@ class _Client:
             try:
                 resp = self.http.post(path, json=payload)
                 if resp.status_code in RETRY_STATUS:
-                    last_error = f"HTTP {resp.status_code}"
+                    last_error = f"HTTP {resp.status_code}: {_reason(resp)}"
                 elif resp.status_code >= 400:
-                    raise ProviderError(f"{path} failed with HTTP {resp.status_code}")
+                    raise ProviderError(f"{path} failed with HTTP {resp.status_code}: {_reason(resp)}")
                 else:
                     return resp.json()
             except httpx.TransportError as exc:

@@ -151,7 +151,7 @@ class AnswerService:
             try:
                 text = self.llm.complete(system, user).strip()
             except Exception as exc:
-                log.warning("llm call failed: %s", type(exc).__name__)
+                log.warning("llm call failed: %s: %s", type(exc).__name__, exc)
                 timings["llm"] = (time.perf_counter() - t1) * 1000
                 timings["total"] = (time.perf_counter() - t0) * 1000
                 return self._decline(question, "llm_unavailable", hits, timings, warnings, lang)
