@@ -70,6 +70,8 @@ def main() -> int:
         raise SystemExit("live mode needs RAG_PROVIDERS=http and the RAG_LLM_* / RAG_EMBED_* variables")
     settings.store = "memory"
 
+    print(f"mode={args.mode} llm={settings.llm_model or 'stand-in'} embeddings={settings.embed_model or 'stand-in'} "
+          f"dim={settings.embed_dim} reranker={settings.rerank_model or 'baseline'} min_relevance={settings.min_relevance}")
     pipeline = build_indexed_pipeline(settings)
     items = load_golden(GOLDEN)
     results = []
