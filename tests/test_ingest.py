@@ -91,3 +91,23 @@ def test_empty_document_reports_why(tmp_path, pipeline, settings):
     empty.write_text("   ")
     res = ingest_file(empty, {}, pipeline.store, pipeline.embedder, settings)
     assert res.status == "failed" and "no extractable text" in res.error
+
+
+def test_ligatures_are_normalised_for_search():
+    from rag.ingest.extract import clean_text
+    from rag.text_utils import content_tokens
+    assert clean_text("Noti\ufb01cation of the O\ufb03ce\u00a0now") == "Notification of the Office now"
+    assert "notification" in content_tokens("Noti\ufb01cation")
+    assert content_tokens("con\ufb01dential") == content_tokens("confidential")
+
+
+def test_real_corpus_has_no_ligatures_after_extraction():
+    from pathlib import Path
+    pdf = Path(__file__).resolve().parents[1] / "data" / "corpus" / "dpa.pdf"
+    if not pdf.exists():
+        pytest.skip("corpus copy not present")
+    pages, scanned = extract_pages(pdf)
+    text = " ".join(t for _, t in pages)
+    assert scanned == [] and len(pages) == 32
+    assert not any("\ufb00" <= ch <= "\ufb06" for ch in text)
+    assert "notification" in text.lower() and "Data Commissioner" in text

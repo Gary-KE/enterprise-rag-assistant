@@ -125,7 +125,16 @@ baseline, so a regression fails the build. Each change is recorded here.
 The latest reports are in each workflow run's summary and in the `offline-eval` and `live-eval` artifacts:
 the metrics table, successful examples, and every failed question with the reason it failed.
 
-*Live results: pending the first run with `GEMINI_API_KEY`.*
+**Offline baseline, 17 November 2026** (real Act, 58 questions, *stand-in* models: hashing embeddings,
+word-overlap reranker and an extractive answerer, so no AI is involved and these are not model-quality numbers):
+
+| hit rate@5 | MRR@5 | answer rate | citation accuracy | decline accuracy |
+| --- | --- | --- | --- | --- |
+| 0.896 | 0.842 | 0.938 | 0.844 | 0.800 |
+
+The offline gate sits just below these, so any change that makes retrieval or citation checks worse fails CI.
+
+*Live results (Gemini + RAGAS): pending the first run with `GEMINI_API_KEY`.*
 
 ## Security
 
@@ -161,6 +170,8 @@ uvicorn rag.main:app --reload                # http://127.0.0.1:8000
 
 ### Deploy (free tiers)
 
+0. **PDF text quirk handled:** the PDF stores "fi" and "fl" as single ligature characters (218 words, such as
+   "Notiﬁcation"). Text is NFKC-normalised at ingestion and for every question, so keyword search matches.
 1. **Supabase:** the schema is in `supabase/migrations/`. Use the **Session pooler** connection string
    (Project → Connect). The direct `db.<ref>.supabase.co` address is IPv6-only, and GitHub runners and
    Render are IPv4.
@@ -175,7 +186,9 @@ uvicorn rag.main:app --reload                # http://127.0.0.1:8000
 | --- | --- | --- |
 | Data Protection Act (Cap. 411C), legislation as at 31 December 2022 | [Kenya Law](https://new.kenyalaw.org/akn/ke/act/2019/24/eng@2022-12-31) | CC BY-NC-SA 4.0 (Kenya Law and Laws.Africa); no copyright on the legislative content |
 
-Documents are downloaded at build time, not stored in the repository. `data/corpus.lock.json` records each
+Kenya Law serves the PDF behind a browser check that blocks automated downloads, so an unmodified copy saved
+from a browser is committed in `data/corpus/` with attribution (the licence allows non-commercial
+redistribution). `data/corpus.lock.json` records each
 file's SHA-256, so a silent change to a source fails the build until the golden set is re-checked. More
 documents are added through `data/sources.json`.
 

@@ -1,7 +1,10 @@
 {
-  "note": "Quality gate. Keys ending in _ms are maximums; all others are minimums. 'live' values are starting points: recalibrate them after the first real run and record the change in the README.",
+  "note": "Quality gate. Keys ending in _ms are maximums; all others are minimums. 'offline' is set just below the 2026-11-17 baseline on the real Act with stand-in models (hit 0.896, MRR 0.842, answer 0.938, citation 0.844, decline 0.800). 'live' values are starting points until the first real-model run.",
   "offline": {
-    "hit_rate@k": 0.6,
+    "hit_rate@k": 0.85,
+    "mrr@k": 0.8,
+    "answer_rate": 0.9,
+    "citation_accuracy": 0.8,
     "decline_accuracy": 0.8
   },
   "live": {

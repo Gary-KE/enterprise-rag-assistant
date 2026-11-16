@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
 STOPWORDS = frozenset(
     """a an the and or but if then of to in on at by for with from as is are was were be been being do does did
@@ -24,4 +25,5 @@ def stem(word: str) -> str:
 
 def content_tokens(text: str) -> list[str]:
     """Lower-cased words without stopwords, plural-stemmed."""
-    return [stem(w) for w in _WORD.findall(text.lower()) if w not in STOPWORDS]
+    text = unicodedata.normalize("NFKC", text).lower()
+    return [stem(w) for w in _WORD.findall(text) if w not in STOPWORDS]
