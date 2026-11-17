@@ -1,3 +1,5 @@
+import pytest
+
 from rag.answer import AnswerService, check_citations, extract_markers
 from rag.ingest.pipeline import ingest_file
 from rag.retrieval import rrf_fuse
@@ -153,3 +155,31 @@ def test_excerpt_centres_on_the_supporting_sentence():
 def test_short_passage_is_returned_whole():
     from rag.answer import best_excerpt
     assert best_excerpt("Short passage.", "anything") == "Short passage."
+
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("Within 72 hours\u3010S1\u3011.", "Within 72 hours[S1]."),
+    ("Ninety days\u202f[ S1 ][ S2 ].", "Ninety days [S1][S2]."),
+    ("Both apply \u3010S1\u2020L3-L5\u3011\u3010S2\u3011.", "Both apply [S1][S2]."),
+    ("Two sources [S1; S2].", "Two sources [S1, S2]."),
+    ("three\u202fmillion and forty\u2011eight hours [S1]", "three million and forty-eight hours [S1]"),
+    ("Keep [see section 5] and [1] and [S1x] as they are.", "Keep [see section 5] and [1] and [S1x] as they are."),
+    ("Plain answer [S1].", "Plain answer [S1]."),
+])
+def test_normalise_answer(raw, expected):
+    from rag.answer import normalise_answer
+    assert normalise_answer(raw) == expected
+
+
+def test_full_width_citations_now_pass_the_check_and_are_scored():
+    from rag.answer import check_citations, normalise_answer
+    text = normalise_answer("A controller must notify the Commissioner within seventy\u2011two hours\u3010S1\u3011.")
+    assert check_citations(text, {"S1", "S2"}, strict_sentences=True) == ""
+    assert "72" not in text and "seventy-two" in text
+
+
+def test_unlisted_marker_in_odd_brackets_is_still_rejected():
+    from rag.answer import check_citations, normalise_answer
+    text = normalise_answer("It says so\u3010S9\u3011.")
+    assert "not provided" in check_citations(text, {"S1"}, strict_sentences=False)

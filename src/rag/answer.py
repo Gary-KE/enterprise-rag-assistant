@@ -49,6 +49,30 @@ TRANSLATE_PROMPT = (
 )
 
 
+_BRACKETED = re.compile(r"[\[\u3010\u3014\uff3b]([^\[\]\u3010\u3011\u3014\u3015\uff3b\uff3d]{1,80})[\]\u3011\u3015\uff3d]")
+_ONLY_MARKERS = re.compile(r"\s*S\d+(?:\s*[,;]\s*S\d+)*\s*")
+_CLEAN = str.maketrans({"\u202f": " ", "\u00a0": " ", "\u2009": " ", "\u2011": "-", "\u200b": ""})
+
+
+def normalise_answer(text: str) -> str:
+    """Rewrite how some models format citations into the canonical [S1] / [S1, S2] form.
+
+    Handles full-width brackets (\u3010S1\u3011), spaces inside the brackets ([ S1 ]), a trailing source locator
+    (\u3010S1\u2020L3-L5\u3011), and replaces odd space and hyphen characters with plain ones. Brackets that
+    hold anything other than source markers are left alone, so ordinary text is never rewritten.
+    """
+
+    def fix(match: re.Match) -> str:
+        inner = re.sub(r"\u2020[^,;]*", "", match.group(1))
+        if not _ONLY_MARKERS.fullmatch(inner):
+            return match.group(0)
+        return "[" + ", ".join(re.findall(r"S\d+", inner)) + "]"
+
+    cleaned = text.translate(_CLEAN)
+    cleaned = _BRACKETED.sub(fix, cleaned)
+    return re.sub(r"[ \t]+(\[S\d)", r" \1", cleaned)
+
+
 _SENT = re.compile(r"(?<=[.;:!?])\s+|\s+(?=\(\d+\)\s)")
 
 
@@ -168,6 +192,7 @@ class AnswerService:
             threshold = self.s.min_relevance_fallback
             warnings.append("hosted reranker unavailable; baseline reranker used")
         if not hits or hits[0].relevance < threshold:
+            log.info("no relevant source: best relevance %.2f is under %.2f", hits[0].relevance if hits else 0.0, threshold)
             timings["total"] = (time.perf_counter() - t0) * 1000
             return self._decline(question, "no_relevant_sources", hits, timings, warnings, lang)
 
@@ -184,7 +209,7 @@ class AnswerService:
                 "or reply exactly NOT_FOUND if the sources do not contain the answer."
             )
             try:
-                text = self.llm.complete(system, user).strip()
+                text = normalise_answer(self.llm.complete(system, user)).strip()
             except Exception as exc:
                 log.warning("llm call failed: %s: %s", type(exc).__name__, exc)
                 timings["llm"] = (time.perf_counter() - t1) * 1000
