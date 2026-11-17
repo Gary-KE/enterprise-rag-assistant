@@ -140,3 +140,16 @@ def test_unknown_language_rejected(pipeline):
     import pytest
     with pytest.raises(ValueError):
         pipeline.answers.answer("anything at all", lang="fr")
+
+
+def test_excerpt_centres_on_the_supporting_sentence():
+    from rag.answer import best_excerpt
+    filler = " ".join(f"Clause {i} covers unrelated administrative matters of the office." for i in range(12))
+    passage = filler + " (5) The data impact assessment reports shall be submitted sixty days prior to the processing of data. " + filler
+    ex = best_excerpt(passage, "Reports are submitted sixty days prior to the processing of data [S1].")
+    assert "sixty days prior" in ex and len(ex) <= 402 and ex.startswith("…") and ex.endswith("…")
+
+
+def test_short_passage_is_returned_whole():
+    from rag.answer import best_excerpt
+    assert best_excerpt("Short passage.", "anything") == "Short passage."

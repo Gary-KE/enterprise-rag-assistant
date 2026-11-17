@@ -12,6 +12,19 @@ gate that fails the build when answer quality drops.
 > (real models + RAGAS) runs in GitHub Actions once the `GEMINI_API_KEY` secret is added. Its numbers
 > are published below only after a real run. None are filled in by hand.
 
+## Screenshots
+
+Running on the real Act (offline stand-in models, so answers here are extracted verbatim; with Gemini they
+are written as short answers with the same citations).
+
+| Cited answer (light) | Cited answer (dark) |
+| --- | --- |
+| ![Breach notification answer cited to section 43, page 22](docs/screenshots/answer-light.png) | ![Maximum fine answer cited to section 63](docs/screenshots/answer-dark.png) |
+
+| Declines in Kiswahili when the Act is silent | Phone |
+| --- | --- |
+| ![Central Bank Rate question declined](docs/screenshots/decline-swahili.png) | ![Mobile layout](docs/screenshots/mobile.png) |
+
 ---
 
 ## Architecture

@@ -49,6 +49,41 @@ TRANSLATE_PROMPT = (
 )
 
 
+_SENT = re.compile(r"(?<=[.;:!?])\s+|\s+(?=\(\d+\)\s)")
+
+
+def best_excerpt(passage: str, answer: str, max_len: int = 400) -> str:
+    """The part of a passage that supports the answer: the sentence sharing the most words with it,
+    widened with its neighbours up to max_len. Falls back to the start of the passage."""
+    from rag.text_utils import content_tokens
+
+    if len(passage) <= max_len:
+        return passage
+    target = set(content_tokens(_MARKER_GROUP.sub(" ", answer)))
+    parts = [p for p in _SENT.split(passage) if p.strip()]
+    if not target or len(parts) < 2:
+        return passage[:max_len].rstrip() + "…"
+    scores = [len(target & set(content_tokens(p))) for p in parts]
+    best = max(range(len(parts)), key=lambda i: (scores[i], -i))
+    lo = hi = best
+    text = parts[best]
+    while True:
+        grew = False
+        if hi + 1 < len(parts) and len(text) + 1 + len(parts[hi + 1]) <= max_len:
+            hi += 1
+            text = text + " " + parts[hi]
+            grew = True
+        if lo > 0 and len(text) + 1 + len(parts[lo - 1]) <= max_len:
+            lo -= 1
+            text = parts[lo] + " " + text
+            grew = True
+        if not grew:
+            break
+    if len(text) > max_len:
+        text = text[:max_len].rstrip()
+    return ("…" if lo > 0 else "") + text + ("…" if hi < len(parts) - 1 or len(text) >= max_len else "")
+
+
 def build_prompt(question: str, hits: list[Hit]) -> str:
     blocks = [
         f'<source id="S{i}">{html.escape(h.chunk.text, quote=False)}</source>'
@@ -183,7 +218,7 @@ class AnswerService:
                     page=hit.chunk.page,
                     url=doc.url if doc else "",
                     retrieved=doc.retrieved if doc else "",
-                    quote=hit.chunk.text[:400],
+                    quote=best_excerpt(hit.chunk.text, text),
                 )
             )
         timings["total"] = (time.perf_counter() - t0) * 1000

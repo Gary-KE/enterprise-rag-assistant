@@ -300,7 +300,7 @@ function renderResult(data) {
       link.textContent = t("open");
       const href = safeUrl(c.url);
       if (href) { link.href = href; } else { link.hidden = true; }
-      node.querySelector(".source-quote").textContent = `“${c.quote}${c.quote.length >= 400 ? "…" : ""}”`;
+      node.querySelector(".source-quote").textContent = `“${c.quote}”`;
       frag.appendChild(node);
     });
   }
