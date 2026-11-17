@@ -60,6 +60,8 @@ def main() -> int:
     ap.add_argument("--ragas", action="store_true", help="also score with RAGAS (live mode only)")
     ap.add_argument("--ragas-limit", type=int, default=None, help="score only the first N answerable items")
     ap.add_argument("--no-gate", action="store_true", help="report only; never fail")
+    ap.add_argument("--questions", type=int, default=None,
+                    help="run only the first N golden questions (a quick check; the gate is skipped for partial runs)")
     args = ap.parse_args()
 
     settings = Settings.from_env()
@@ -96,13 +98,36 @@ def main() -> int:
         print(f"preflight: answer model '{usable[0]}' reachable")
     pipeline = build_indexed_pipeline(settings)
     items = load_golden(GOLDEN)
+    if args.questions:
+        items = items[: args.questions]
+        args.no_gate = True
     results = []
+    import dataclasses
+    import logging
+    from rag.providers.http import WAITED
+
+    seen_logs: list[str] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record):
+            seen_logs.append(record.getMessage())
+
+    logging.getLogger("rag.answer").addHandler(_Capture())
+    logging.getLogger("rag.answer").setLevel(logging.INFO)
     for n, item in enumerate(items, start=1):
+        seen_logs.clear()
+        waited_before = WAITED["seconds"]
         ans = pipeline.answers.answer(item.question)
         r = score_item(item, ans, pipeline.store)
+        # Latency counts the app's own work, not the pauses this script adds to respect free-tier limits.
+        r = dataclasses.replace(r, latency_ms=max(0.0, r.latency_ms - (WAITED["seconds"] - waited_before) * 1000))
         results.append(r)
         mark = "ok " if ((item.answerable and r.citation_correct) or (not item.answerable and r.declined)) else "BAD"
-        print(f"{mark} {n:>3}/{len(items)} {item.id} rank={r.first_hit_rank} declined={r.declined} {r.latency_ms:.0f}ms")
+        why = f" why={r.decline_reason}" if r.declined else ""
+        print(f"{mark} {n:>3}/{len(items)} {item.id} rank={r.first_hit_rank} declined={r.declined}{why} {r.latency_ms:.0f}ms")
+        if mark == "BAD" and r.declined:
+            for line in seen_logs[:2]:
+                print("      " + line[:420].replace("\n", " "))
 
     if args.ragas:
         if args.mode != "live":

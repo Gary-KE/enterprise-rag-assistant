@@ -191,12 +191,14 @@ class AnswerService:
                 timings["total"] = (time.perf_counter() - t0) * 1000
                 return self._decline(question, "llm_unavailable", hits, timings, warnings, lang)
             if text.upper().startswith("NOT_FOUND"):
+                log.info("model said NOT_FOUND for %r (best relevance %.2f)", question[:80], hits[0].relevance)
                 timings["llm"] = (time.perf_counter() - t1) * 1000
                 timings["total"] = (time.perf_counter() - t0) * 1000
                 return self._decline(question, "model_found_no_answer", hits, timings, warnings, lang)
             reason = check_citations(text, valid, self.s.strict_sentence_citations)
             if not reason:
                 break
+            log.info("answer rejected (%s): %r", reason, text[:400])
         timings["llm"] = (time.perf_counter() - t1) * 1000
 
         if reason:

@@ -17,6 +17,7 @@ RETRY_STATUS = {429, 500, 502, 503, 504}
 # "retry in 7s" (Gemini), "Please try again in 7.66s" / "in 1m30.5s" / "in 450ms" (Groq, OpenAI).
 _RETRY_IN = re.compile(r"(?:retry|try again) in ((?:\d+h)?(?:\d+m(?!s))?(?:[0-9]+(?:\.[0-9]+)?(?:ms|s))?)", re.I)
 _PART = re.compile(r"([0-9]+(?:\.[0-9]+)?)(h|ms|m|s)")
+WAITED = {"seconds": 0.0}   # total time spent deliberately waiting (pacing, rate limits, back-off)
 MAX_RATE_WAITS = 3          # per-minute limits are normal on free tiers; wait for them a few times per call
 _DAILY = re.compile(r"per ?day|perday|daily", re.I)
 _TOKENISH = re.compile(r"[A-Za-z0-9_.-]{32,}")
@@ -74,11 +75,15 @@ class _Client:
             transport=transport,
         )
 
+    def _wait(self, seconds: float) -> None:
+        WAITED["seconds"] += seconds
+        self.sleep(seconds)
+
     def _pace(self) -> None:
         if self.min_interval_s > 0 and self._last_call is not None:
             wait = self.min_interval_s - (self.clock() - self._last_call)
             if wait > 0:
-                self.sleep(wait)
+                self._wait(wait)
         self._last_call = self.clock()
 
     def _post(self, path: str, payload: dict) -> dict:
@@ -97,7 +102,7 @@ class _Client:
                     if wait is not None and rate_waits < MAX_RATE_WAITS:
                         # A per-minute limit (requests or tokens) says how long to wait: wait and try again.
                         rate_waits += 1
-                        self.sleep(min(wait + 1.0, 70.0))
+                        self._wait(min(wait + 1.0, 70.0))
                         continue
                     if "quota" in reason.lower() or wait is not None:
                         raise QuotaExhausted(f"{path} failed with HTTP 429 (quota exhausted): {reason}")
@@ -110,7 +115,7 @@ class _Client:
             except httpx.TransportError as exc:
                 last_error = f"{type(exc).__name__}"
             if attempt < self.attempts - 1:
-                self.sleep(0.5 * (2 ** attempt))
+                self._wait(0.5 * (2 ** attempt))
         raise ProviderError(f"{path} failed after {self.attempts} attempts ({last_error})")
 
 

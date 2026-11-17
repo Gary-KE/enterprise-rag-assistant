@@ -10,6 +10,10 @@ name: Live evaluation (RAGAS)
 on:
   workflow_dispatch:
     inputs:
+      questions:
+        description: "Quick check: run only the first N questions, without RAGAS or the gate (empty = all)"
+        required: false
+        default: ""
       ragas_limit:
         description: "Score only the first N answerable questions with RAGAS (empty = all)"
         required: false
@@ -108,7 +112,10 @@ jobs:
         if: steps.keys.outputs.ready == 'true'
         run: |
           LIMIT="${{ github.event.inputs.ragas_limit }}"
-          if [ -n "$LIMIT" ]; then
+          QUESTIONS="${{ github.event.inputs.questions }}"
+          if [ -n "$QUESTIONS" ]; then
+            python scripts/run_eval.py --mode live --questions "$QUESTIONS"
+          elif [ -n "$LIMIT" ]; then
             python scripts/run_eval.py --mode live --ragas --ragas-limit "$LIMIT"
           else
             python scripts/run_eval.py --mode live --ragas
