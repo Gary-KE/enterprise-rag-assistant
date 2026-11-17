@@ -1,7 +1,7 @@
 # Dondoo · production-style RAG with enforced citations
 
-**Dondoo** (Swahili: *an excerpt, a quotation*) answers questions about Kenya's **Data Protection Act** and
-cites the exact page behind every claim. If the documents do not contain the answer, it says so instead
+**Dondoo** (Swahili: *an excerpt, a quotation*) answers questions about Kenya's **Data Protection Act** and its
+**Data Protection (General) Regulations, 2021**, and cites the exact page behind every claim. If the documents do not contain the answer, it says so instead
 of guessing. The interface works in **English and Kiswahili**, in light and dark mode, on any device.
 
 It is built the way a company would need it: hybrid retrieval, a reranker, citation enforcement in code,
@@ -94,12 +94,13 @@ OpenAI-compatible server works, including a self-hosted open model.
 
 ### Golden set: `eval/golden.jsonl`
 
-**58 questions: 48 answerable and 10 that the Act does not answer** (off-topic, other laws, live data,
-and a prompt-injection attempt).
+**80 questions: 68 answerable (48 on the Act, 20 on the Regulations) and 12 that neither document answers**
+(off-topic, other laws, live data, current office-holders, and a prompt-injection attempt).
 
-Each answerable question has a reference answer and a **verbatim quote** from the Act. All 48 quotes were
-checked word for word against the live Kenya Law text of the Act on 17 November 2026. Every quote was
-found, and each appears **exactly once**, so a citation can be scored without ambiguity.
+Each answerable question has a reference answer and a **verbatim quote** from its document. The 48 Act
+quotes were checked word for word against the live Kenya Law text on 17 November 2026; the 20 Regulations
+quotes against the gazetted PDF the same day. Every quote was found, and each appears **exactly once across
+both documents**, so a citation can be scored without ambiguity.
 `scripts/verify_golden.py` repeats this check in CI against the downloaded PDF. It also reports any quote
 that crosses a chunk or page boundary, since that would cap the retrieval score.
 
@@ -139,14 +140,22 @@ baseline, so a regression fails the build. Each change is recorded here.
 The latest reports are in each workflow run's summary and in the `offline-eval` and `live-eval` artifacts:
 the metrics table, successful examples, and every failed question with the reason it failed.
 
-**Offline baseline, 17 November 2026** (real Act, 58 questions, *stand-in* models: hashing embeddings,
+**Offline baseline, 17 November 2026** (Act + Regulations, 80 questions, *stand-in* models: hashing embeddings,
 word-overlap reranker and an extractive answerer, so no AI is involved and these are not model-quality numbers):
 
 | hit rate@5 | MRR@5 | answer rate | citation accuracy | decline accuracy |
 | --- | --- | --- | --- | --- |
-| 0.896 | 0.842 | 0.938 | 0.844 | 0.800 |
+| 0.897 | 0.770 | 0.956 | 0.739 | 0.667 |
 
 The offline gate sits just below these, so any change that makes retrieval or citation checks worse fails CI.
+
+**What adding a second document taught us.** On the Act alone the same stand-ins scored MRR 0.842 and citation
+accuracy 0.844. The Regulations restate many sections of the Act, so for some Act questions a Regulations
+passage now ranks above the Act's own wording (Act-only MRR fell to 0.736), even though the Regulations' own
+20 questions are found every time (hit rate 1.0, MRR 0.85). The stand-ins also cannot judge meaning, so a
+question such as "Who is the current Data Commissioner?" overlaps heavily with the text and is answered
+instead of declined. The live run with real models is what measures these properly; candidate fixes are a
+document-aware reranker and preferring the parent Act when two passages say the same thing.
 
 **First live attempt, 17 November 2026:** with Gemini embeddings, retrieval found the right passage in the top 5
 for 43 of 48 answerable questions, most at rank 1. The answering model then returned HTTP 429 "quota exceeded"
@@ -182,7 +191,7 @@ moves to the fallback model.
 pip install -e ".[dev,ragas,postgres]"
 pytest -q                                    # all tests, no keys needed
 
-python scripts/fetch_corpus.py               # download the Act (data/raw/)
+python scripts/fetch_corpus.py               # copy or download the documents (data/raw/)
 python scripts/verify_golden.py              # check the golden quotes against it
 python scripts/run_eval.py --mode offline    # evaluation with stand-in models
 
@@ -208,6 +217,7 @@ uvicorn rag.main:app --reload                # http://127.0.0.1:8000
 | Document | Source | Licence |
 | --- | --- | --- |
 | Data Protection Act (Cap. 411C), legislation as at 31 December 2022 | [Kenya Law](https://new.kenyalaw.org/akn/ke/act/2019/24/eng@2022-12-31) | CC BY-NC-SA 4.0 (Kenya Law and Laws.Africa); no copyright on the legislative content |
+| Data Protection (General) Regulations, 2021 (Legal Notice 263, Kenya Gazette Supplement No. 236) | [ODPC](https://www.odpc.go.ke/wp-content/uploads/2024/03/THE-DATA-PROTECTION-GENERAL-REGULATIONS-2021-1.pdf) ([Kenya Law page](https://new.kenyalaw.org/akn/ke/act/ln/2021/263)) | Official gazetted subsidiary legislation, published by the regulator |
 
 Kenya Law serves the PDF behind a browser check that blocks automated downloads, so an unmodified copy saved
 from a browser is committed in `data/corpus/` with attribution (the licence allows non-commercial

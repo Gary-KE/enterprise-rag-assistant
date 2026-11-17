@@ -12,6 +12,18 @@
       "access_level": 0,
       "file": "data/corpus/dpa.pdf",
       "download_note": "Kenya Law serves this PDF behind a browser check, so automated downloads (CI) get HTTP 202 instead of the file. The copy in data/corpus/ was saved from a browser, unmodified."
+    },
+    {
+      "key": "dpgr",
+      "title": "Data Protection (General) Regulations, 2021 (Legal Notice 263)",
+      "publisher": "Office of the Data Protection Commissioner (ODPC), Kenya; Kenya Gazette Supplement No. 236",
+      "published": "31 December 2021 (Legislative Supplement No. 106)",
+      "url": "https://www.odpc.go.ke/wp-content/uploads/2024/03/THE-DATA-PROTECTION-GENERAL-REGULATIONS-2021-1.pdf",
+      "page_url": "https://new.kenyalaw.org/akn/ke/act/ln/2021/263",
+      "licence": "Official Kenya Gazette publication of subsidiary legislation, published by the ODPC.",
+      "access_level": 0,
+      "file": "data/corpus/dpgr.pdf",
+      "download_note": "Fetched by the 'Fetch a source document' workflow from the ODPC website and committed unmodified."
     }
   ]
 }
