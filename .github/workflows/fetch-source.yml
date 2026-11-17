@@ -1,0 +1,43 @@
+name: Fetch a source document
+
+# Downloads one public document from an https URL and keeps it as a build artifact, so it can be
+# checked by hand before it is committed to data/corpus/ and pinned in data/corpus.lock.json.
+# Started by hand only. Nothing is committed by this workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "https URL of the document"
+        required: true
+      name:
+        description: "File name to save it as (letters, digits, dot, dash, underscore)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download and describe
+        env:
+          URL: ${{ github.event.inputs.url }}
+          NAME: ${{ github.event.inputs.name }}
+        run: |
+          set -euo pipefail
+          case "$URL" in https://*) ;; *) echo "::error::only https URLs"; exit 1 ;; esac
+          if ! printf '%s' "$NAME" | grep -Eq '^[A-Za-z0-9._-]{1,80}$'; then echo "::error::bad file name"; exit 1; fi
+          mkdir -p out
+          curl -fsSL --max-time 120 --max-filesize 52428800 -A "Mozilla/5.0 (enterprise-rag-assistant source fetch)" \
+            -o "out/$NAME" "$URL"
+          file "out/$NAME"
+          sha256sum "out/$NAME" | tee out/SHA256SUMS
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fetched-source
+          path: out
+          retention-days: 3
