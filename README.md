@@ -1,5 +1,7 @@
 # Dondoo · production-style RAG with enforced citations
 
+**Live:** https://dondoo-rag.onrender.com
+
 **Dondoo** (Swahili: *an excerpt, a quotation*) answers questions about Kenya's **Data Protection Act** and its
 **Data Protection (General) Regulations, 2021**, and cites the exact page behind every claim. If the documents do not contain the answer, it says so instead
 of guessing. The interface works in **English and Kiswahili**, in light and dark mode, on any device.
@@ -7,6 +9,8 @@ of guessing. The interface works in **English and Kiswahili**, in light and dark
 It is built the way a company would need it: hybrid retrieval, a reranker, citation enforcement in code,
 refusal of unsupported questions, a hand-verified golden test set, RAGAS evaluation, and a CI quality
 gate that fails the build when answer quality drops.
+
+> **Project report (PDF):** [How Dondoo and Afya Chat work, how they were built and tested](docs/report/Gerishom_Manoa_Project_Report_Dondoo_AfyaChat.pdf)
 
 > Status: the code, tests, database schema and offline evaluation are complete. The live evaluation
 > (real models + RAGAS) runs in GitHub Actions once the `GEMINI_API_KEY` secret is added. Its numbers
