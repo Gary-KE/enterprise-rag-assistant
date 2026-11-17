@@ -1,0 +1,50 @@
+name: Check the DATABASE_URL secret
+
+# Run by hand. Prints the shape of the DATABASE_URL secret (user name, host, port, database, and only
+# the length and character kinds of the password) so a bad connection string can be fixed.
+# It never prints the password, and it makes one test connection.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "psycopg[binary]"
+      - name: Describe the URL and try it
+        run: |
+          python - <<'PY'
+          import os, re, sys
+          from urllib.parse import urlsplit, unquote
+          raw = os.environ.get("DATABASE_URL", "")
+          print("secret present:", bool(raw), "| length:", len(raw))
+          print("has leading/trailing whitespace or newline:", raw != raw.strip() or "\n" in raw)
+          print("contains [ or ] or YOUR-PASSWORD:", "[" in raw or "]" in raw or "YOUR-PASSWORD" in raw.upper())
+          u = urlsplit(raw.strip())
+          print("scheme:", u.scheme)
+          print("user:", u.username)
+          print("host:", u.hostname, "| port:", u.port, "| database:", u.path)
+          pw = unquote(u.password or "")
+          print("password length:", len(pw))
+          print("password kinds: letters=%s digits=%s other=%s" % (
+              bool(re.search("[A-Za-z]", pw)), bool(re.search("[0-9]", pw)), bool(re.search("[^A-Za-z0-9]", pw))))
+          print("raw password part contains characters that must be percent-encoded:",
+                bool(re.search(r"[@/:?#\[\]]", (u.netloc.rsplit("@", 1)[0].split(":", 1)[1] if ":" in u.netloc.rsplit("@", 1)[0] else ""))))
+          import psycopg
+          try:
+              with psycopg.connect(raw.strip(), connect_timeout=15) as c:
+                  print("CONNECTED:", c.execute("select current_user").fetchone()[0])
+          except Exception as e:
+              print("CONNECT FAILED:", str(e).splitlines()[0])
+              sys.exit(1)
+          PY
