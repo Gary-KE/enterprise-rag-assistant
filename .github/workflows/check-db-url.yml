@@ -25,21 +25,26 @@ jobs:
         run: |
           python - <<'PY'
           import os, re, sys
-          from urllib.parse import urlsplit, unquote
+          from urllib.parse import unquote
           raw = os.environ.get("DATABASE_URL", "")
           print("secret present:", bool(raw), "| length:", len(raw))
           print("has leading/trailing whitespace or newline:", raw != raw.strip() or "\n" in raw)
           print("contains [ or ] or YOUR-PASSWORD:", "[" in raw or "]" in raw or "YOUR-PASSWORD" in raw.upper())
-          u = urlsplit(raw.strip())
-          print("scheme:", u.scheme)
-          print("user:", u.username)
-          print("host:", u.hostname, "| port:", u.port, "| database:", u.path)
-          pw = unquote(u.password or "")
-          print("password length:", len(pw))
+          body = raw.strip()
+          scheme, _, rest = body.partition("://")
+          creds, _, hostpart = rest.rpartition("@")
+          user, _, pw = creds.partition(":")
+          host, _, tail = hostpart.partition("/")
+          print("scheme:", scheme)
+          print("user:", user)
+          print("host:", host, "| database:", tail)
+          print("password length:", len(unquote(pw)))
           print("password kinds: letters=%s digits=%s other=%s" % (
               bool(re.search("[A-Za-z]", pw)), bool(re.search("[0-9]", pw)), bool(re.search("[^A-Za-z0-9]", pw))))
-          print("raw password part contains characters that must be percent-encoded:",
-                bool(re.search(r"[@/:?#\[\]]", (u.netloc.rsplit("@", 1)[0].split(":", 1)[1] if ":" in u.netloc.rsplit("@", 1)[0] else ""))))
+          print("password starts with [ :", pw.startswith("["), "| ends with ] :", pw.endswith("]"))
+          print("password is the placeholder text:", "YOUR-PASSWORD" in pw.upper())
+          print("brackets elsewhere in the string (user/host):", any(c in user + host + tail for c in "[]"))
+          print("characters in the password that need percent-encoding:", sorted(set(re.findall(r"[@/:?#\[\]]", pw))))
           import psycopg
           try:
               with psycopg.connect(raw.strip(), connect_timeout=15) as c:
