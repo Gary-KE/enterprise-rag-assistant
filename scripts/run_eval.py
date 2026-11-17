@@ -80,7 +80,8 @@ def main() -> int:
         usable, errors = [], []
         for name in names:
             try:
-                OpenAICompatibleLLM(settings.llm_base_url, settings.llm_api_key, name).complete(
+                OpenAICompatibleLLM(settings.llm_base_url, settings.llm_api_key, name,
+                                    reasoning_effort=settings.llm_reasoning_effort).complete(
                     "Reply with the single word: ok", "ping")
                 usable.append(name)
                 break
@@ -109,7 +110,12 @@ def main() -> int:
         from rag.evaluation.ragas_runner import score_with_ragas
         judge_model = os.environ.get("RAG_JUDGE_MODEL") or settings.llm_model
         pause = float(os.environ.get("RAG_JUDGE_PAUSE_S", "13"))   # ~5 judge calls per minute on free tiers
-        score_with_ragas(results, settings.llm_base_url, settings.llm_api_key, judge_model,
+        # The judge may use a different provider from the answers (e.g. answers on Groq, judge on Gemini),
+        # so the two never compete for one quota.
+        judge_base = os.environ.get("RAG_JUDGE_BASE_URL") or settings.llm_base_url
+        judge_key = os.environ.get("RAG_JUDGE_API_KEY") or settings.llm_api_key
+        print(f"ragas: judge model '{judge_model}' at {judge_base.split('/')[2] if '//' in judge_base else judge_base}")
+        score_with_ragas(results, judge_base, judge_key, judge_model,
                          limit=args.ragas_limit, pause_s=pause)
 
     summary = summarise(results)

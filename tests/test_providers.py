@@ -243,3 +243,62 @@ def test_factory_builds_fallback_chain():
                  embed_model="e")
     p = build_pipeline(s)
     assert isinstance(p.llm, FallbackLLM) and [m.model for m in p.llm.models] == ["flash", "lite", "other"]
+
+
+# Groq (and OpenAI) phrase per-minute limits as "Please try again in 7.66s", with no word "quota".
+GROQ_TPM = ("Rate limit reached for model `openai/gpt-oss-120b` in organization `org_x` service tier `on_demand` "
+            "on tokens per minute (TPM): Limit 8000, Used 6100, Requested 2500. Please try again in 4.5s.")
+GROQ_RPD = ("Rate limit reached for model `openai/gpt-oss-120b` in organization `org_x` service tier `on_demand` "
+            "on requests per day (RPD): Limit 1000, Used 1000, Requested 1. Please try again in 1m26.4s.")
+
+
+def test_groq_per_minute_limit_waits_and_retries():
+    slept = []
+    t, seen = transport([(429, {"error": {"message": GROQ_TPM}}), (429, {"error": {"message": GROQ_TPM}}),
+                         (200, {"choices": [{"message": {"content": "ok"}}]})])
+    llm = OpenAICompatibleLLM("https://x.test", "k", "m", transport=t, sleep=slept.append)
+    assert llm.complete("s", "u") == "ok" and len(seen) == 3 and slept == [5.5, 5.5]
+
+
+def test_groq_daily_limit_is_exhausted_not_waited_for():
+    from rag.providers.http import QuotaExhausted
+    t, seen = transport([(429, {"error": {"message": GROQ_RPD}})])
+    with pytest.raises(QuotaExhausted, match="daily limit"):
+        OpenAICompatibleLLM("https://x.test", "k", "m", transport=t, sleep=no_sleep).complete("s", "u")
+    assert len(seen) == 1
+
+
+def test_endless_per_minute_limit_stops_after_a_few_waits():
+    from rag.providers.http import MAX_RATE_WAITS, QuotaExhausted
+    slept = []
+    t, seen = transport([(429, {"error": {"message": GROQ_TPM}})])
+    with pytest.raises(QuotaExhausted):
+        OpenAICompatibleLLM("https://x.test", "k", "m", transport=t, sleep=slept.append).complete("s", "u")
+    assert len(slept) == MAX_RATE_WAITS and len(seen) == MAX_RATE_WAITS + 1
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Please try again in 7.66s.", 7.66),
+    ("Please try again in 1m26.4s.", 86.4),
+    ("Please try again in 450ms.", 0.45),
+    ("Please retry in 12s", 12.0),
+])
+def test_retry_after_parsing(text, expected):
+    from rag.providers.http import retry_after_seconds
+    assert retry_after_seconds(httpx.Response(429, json={"error": {"message": text}})) == pytest.approx(expected)
+
+
+def test_retry_after_header_is_used_when_message_has_none():
+    from rag.providers.http import retry_after_seconds
+    resp = httpx.Response(429, json={"error": {"message": "slow down"}}, headers={"retry-after": "3"})
+    assert retry_after_seconds(resp) == 3.0
+
+
+def test_reasoning_effort_is_sent_only_when_set():
+    ok = (200, {"choices": [{"message": {"content": "ok"}}]})
+    t, seen = transport([ok])
+    OpenAICompatibleLLM("https://x.test", "k", "m", transport=t, sleep=no_sleep, reasoning_effort="low").complete("s", "u")
+    assert json.loads(seen[0].content)["reasoning_effort"] == "low"
+    t2, seen2 = transport([ok])
+    OpenAICompatibleLLM("https://x.test", "k", "m", transport=t2, sleep=no_sleep).complete("s", "u")
+    assert "reasoning_effort" not in json.loads(seen2[0].content)

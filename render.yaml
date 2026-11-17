@@ -10,12 +10,15 @@ services:
         value: http
       - key: RAG_STORE
         value: pgvector
+      # Answers on Groq's free plan (1,000 requests/day per model); embeddings stay on Gemini.
       - key: RAG_LLM_BASE_URL
-        value: https://generativelanguage.googleapis.com/v1beta/openai
+        value: https://api.groq.com/openai/v1
       - key: RAG_LLM_MODEL
-        value: gemini-flash-latest
+        value: openai/gpt-oss-120b
       - key: RAG_LLM_FALLBACK_MODELS
-        value: gemini-flash-lite-latest
+        value: openai/gpt-oss-20b
+      - key: RAG_LLM_REASONING_EFFORT
+        value: low
       - key: RAG_EMBED_BASE_URL
         value: https://generativelanguage.googleapis.com/v1beta/openai
       - key: RAG_EMBED_MODEL

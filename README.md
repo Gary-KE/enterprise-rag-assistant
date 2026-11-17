@@ -14,7 +14,7 @@ gate that fails the build when answer quality drops.
 
 ## Screenshots
 
-Running on the real Act (offline stand-in models, so answers here are extracted verbatim; with Gemini they
+Running on the real Act (offline stand-in models, so answers here are extracted verbatim; with the live model they
 are written as short answers with the same citations).
 
 | Cited answer (light) | Cited answer (dark) |
@@ -69,7 +69,8 @@ flowchart LR
 | Vector search | pgvector HNSW, cosine distance | Matches meaning when the wording differs |
 | Fusion | Reciprocal rank fusion (k = 60) | Merges two rankings without tuning score scales |
 | Reranker | Jina `jina-reranker-v2-base-multilingual` (hosted), baseline fallback | Reads question and passage together, so it ranks better than either search alone |
-| LLM and embeddings | Gemini through its OpenAI-compatible API | Free tier; one interface, so a self-hosted model (Ollama, vLLM) can replace it by changing one URL |
+| Answer model | `openai/gpt-oss-120b` on Groq (fallback `gpt-oss-20b`; Gemini also supported) | Groq's free plan allows 1,000 requests/day per model against about 20 for Gemini Flash; OpenAI-compatible, so any provider or a self-hosted model (Ollama, vLLM) is one URL away |
+| Embeddings and RAGAS judge | Gemini (`gemini-embedding-2`, Flash-Lite judge) | Free; a separate quota from the answer model, so evaluation does not starve answers |
 | Evaluation | Golden set, RAGAS, own metrics, CI gate | Quality is measured on every change, not assumed |
 
 All three model parts sit behind small interfaces (`Embedder`, `LLM`, `Reranker`). Any
@@ -153,6 +154,9 @@ on the free tier, so no answer-quality or RAGAS scores exist yet. The pipeline n
 and does not retry quota errors. It now also paces calls for free per-minute limits (one every 13 s by default),
 waits once when the provider says "retry in N s", and switches to `gemini-flash-lite-latest` when the main
 model's daily quota runs out (`RAG_LLM_FALLBACK_MODELS`). The RAGAS judge uses Flash-Lite by default.
+Because Gemini's free answer quota is so small, answers now go to Groq when a `GROQ_API_KEY` secret is set; its
+"Please try again in 7.66s" per-minute limits are waited out (up to three times per call), and its daily limit
+moves to the fallback model.
 *Live answer and RAGAS results: pending a run with available quota.*
 
 ## Security
@@ -194,7 +198,7 @@ uvicorn rag.main:app --reload                # http://127.0.0.1:8000
 1. **Supabase:** the schema is in `supabase/migrations/`. Use the **Session pooler** connection string
    (Project → Connect). The direct `db.<ref>.supabase.co` address is IPv6-only, and GitHub runners and
    Render are IPv4.
-2. **GitHub secrets:** `GEMINI_API_KEY`, `DATABASE_URL`, and optionally `JINA_API_KEY`. Then run
+2. **GitHub secrets:** `GEMINI_API_KEY`, `GROQ_API_KEY`, `DATABASE_URL`, and optionally `JINA_API_KEY`. Then run
    *Actions → Load the corpus into Supabase*.
 3. **Render:** *New → Blueprint* with this repo (`render.yaml`), then enter the same secrets. Free
    instances sleep when idle, so the first request after a pause takes longer.

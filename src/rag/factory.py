@@ -39,7 +39,8 @@ def build_pipeline(settings: Settings) -> Pipeline:
         from rag.providers.http import FallbackLLM
         names = [settings.llm_model] + [m.strip() for m in settings.llm_fallback_models.split(",") if m.strip()]
         clients = [OpenAICompatibleLLM(settings.llm_base_url, settings.llm_api_key, name, timeout=60.0,
-                                       min_interval_s=settings.llm_min_interval_s) for name in names]
+                                       min_interval_s=settings.llm_min_interval_s,
+                                       reasoning_effort=settings.llm_reasoning_effort) for name in names]
         llm = clients[0] if len(clients) == 1 else FallbackLLM(clients)
     else:
         embedder = HashingEmbedder(settings.embed_dim)

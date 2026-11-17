@@ -14,9 +14,27 @@ import httpx
 from rag.providers.base import ProviderError
 
 RETRY_STATUS = {429, 500, 502, 503, 504}
-_RETRY_IN = re.compile(r"retry in ([0-9]+(?:\.[0-9]+)?)\s*s", re.I)
+# "retry in 7s" (Gemini), "Please try again in 7.66s" / "in 1m30.5s" / "in 450ms" (Groq, OpenAI).
+_RETRY_IN = re.compile(r"(?:retry|try again) in ((?:\d+h)?(?:\d+m(?!s))?(?:[0-9]+(?:\.[0-9]+)?(?:ms|s))?)", re.I)
+_PART = re.compile(r"([0-9]+(?:\.[0-9]+)?)(h|ms|m|s)")
+MAX_RATE_WAITS = 3          # per-minute limits are normal on free tiers; wait for them a few times per call
 _DAILY = re.compile(r"per ?day|perday|daily", re.I)
 _TOKENISH = re.compile(r"[A-Za-z0-9_.-]{32,}")
+
+
+def retry_after_seconds(resp: httpx.Response) -> Optional[float]:
+    """Seconds the provider asks us to wait, from its message or the Retry-After header; None if unknown."""
+    m = _RETRY_IN.search(resp.text)
+    if m and m.group(1):
+        units = {"h": 3600.0, "m": 60.0, "s": 1.0, "ms": 0.001}
+        total = sum(float(n) * units[u] for n, u in _PART.findall(m.group(1)))
+        if total > 0:
+            return total
+    header = resp.headers.get("retry-after", "")
+    try:
+        return float(header) if header else None
+    except ValueError:
+        return None
 
 
 def _reason(resp: httpx.Response) -> str:
@@ -65,21 +83,24 @@ class _Client:
 
     def _post(self, path: str, payload: dict) -> dict:
         last_error = "unknown error"
-        waited_for_quota = False
+        rate_waits = 0
         for attempt in range(self.attempts):
             try:
                 self._pace()
                 resp = self.http.post(path, json=payload)
-                if resp.status_code == 429 and "quota" in _reason(resp).lower():
+                if resp.status_code == 429:
                     reason = _reason(resp)
-                    hint = _RETRY_IN.search(resp.text)
-                    # A per-minute quota says "retry in Ns": wait once and try again. A daily quota, or a
-                    # second hit, is exhausted for now: retrying only burns more quota.
-                    if hint and not _DAILY.search(resp.text) and not waited_for_quota:
-                        waited_for_quota = True
-                        self.sleep(min(float(hint.group(1)) + 1.0, 70.0))
+                    wait = retry_after_seconds(resp)
+                    if _DAILY.search(resp.text):
+                        # A daily limit will not clear by waiting: give up on this model for now.
+                        raise QuotaExhausted(f"{path} failed with HTTP 429 (daily limit reached): {reason}")
+                    if wait is not None and rate_waits < MAX_RATE_WAITS:
+                        # A per-minute limit (requests or tokens) says how long to wait: wait and try again.
+                        rate_waits += 1
+                        self.sleep(min(wait + 1.0, 70.0))
                         continue
-                    raise QuotaExhausted(f"{path} failed with HTTP 429 (quota exhausted): {reason}")
+                    if "quota" in reason.lower() or wait is not None:
+                        raise QuotaExhausted(f"{path} failed with HTTP 429 (quota exhausted): {reason}")
                 if resp.status_code in RETRY_STATUS:
                     last_error = f"HTTP {resp.status_code}: {_reason(resp)}"
                 elif resp.status_code >= 400:
@@ -98,18 +119,22 @@ class QuotaExhausted(ProviderError):
 
 
 class OpenAICompatibleLLM(_Client):
+    def __init__(self, *args, reasoning_effort: str = "", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.reasoning_effort = reasoning_effort   # e.g. "low" for reasoning models such as gpt-oss on Groq
+
     def complete(self, system: str, user: str) -> str:
-        data = self._post(
-            "/chat/completions",
-            {
-                "model": self.model,
-                "temperature": 0,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-            },
-        )
+        payload: dict = {
+            "model": self.model,
+            "temperature": 0,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        if self.reasoning_effort:
+            payload["reasoning_effort"] = self.reasoning_effort
+        data = self._post("/chat/completions", payload)
         try:
             return data["choices"][0]["message"]["content"] or ""
         except (KeyError, IndexError, TypeError) as exc:

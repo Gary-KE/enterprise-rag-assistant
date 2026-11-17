@@ -1,7 +1,9 @@
 name: Live evaluation (RAGAS)
 
 # Runs the golden set through the real models and scores it with RAGAS plus our own metrics.
-# Needs the repository secret GEMINI_API_KEY (and optionally JINA_API_KEY for the reranker).
+# Needs the repository secret GEMINI_API_KEY (embeddings and the RAGAS judge).
+# Optional: GROQ_API_KEY moves the answer model to Groq (free plan: 1,000 requests/day for gpt-oss-120b,
+# against ~20/day for Gemini Flash), and JINA_API_KEY turns on the hosted reranker.
 # Started by hand only (Actions tab > Run workflow), so the free-tier quota is not spent on every push.
 # The build fails if any threshold in eval/thresholds.json ("live") is missed.
 
@@ -26,22 +28,19 @@ jobs:
     timeout-minutes: 120
     env:
       RAG_PROVIDERS: http
-      RAG_LLM_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai
-      RAG_LLM_MODEL: ${{ vars.RAG_LLM_MODEL || 'gemini-flash-latest' }}
-      RAG_LLM_FALLBACK_MODELS: ${{ vars.RAG_LLM_FALLBACK_MODELS || 'gemini-flash-lite-latest' }}
-      RAG_LLM_MIN_INTERVAL_S: ${{ vars.RAG_LLM_MIN_INTERVAL_S || '13' }}
-      RAG_JUDGE_MODEL: ${{ vars.RAG_JUDGE_MODEL || vars.RAG_LLM_FALLBACK_MODELS || 'gemini-flash-lite-latest' }}
+      RAG_JUDGE_MODEL_VAR: ${{ vars.RAG_JUDGE_MODEL }}
       RAG_EMBED_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai
       RAG_EMBED_MODEL: ${{ vars.RAG_EMBED_MODEL || 'gemini-embedding-2' }}
       RAG_EMBED_DIM: ${{ vars.RAG_EMBED_DIM || '768' }}
-      RAG_LLM_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GROQ_KEY: ${{ secrets.GROQ_API_KEY }}
       RAG_EMBED_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       JINA_KEY: ${{ secrets.JINA_API_KEY }}
     steps:
       - name: Check the API key is configured
         id: keys
         run: |
-          if [ -z "$RAG_LLM_API_KEY" ]; then
+          if [ -z "$GEMINI_KEY" ]; then
             echo "::notice::GEMINI_API_KEY secret is not set; skipping the live evaluation."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
@@ -56,6 +55,40 @@ jobs:
           cache: pip
       - if: steps.keys.outputs.ready == 'true'
         run: pip install -e ".[dev,ragas]"
+      - name: Choose the answer provider (Groq when its key is set, otherwise Gemini)
+        if: steps.keys.outputs.ready == 'true'
+        env:
+          V_MODEL: ${{ vars.RAG_LLM_MODEL }}
+          V_FALLBACK: ${{ vars.RAG_LLM_FALLBACK_MODELS }}
+          V_INTERVAL: ${{ vars.RAG_LLM_MIN_INTERVAL_S }}
+        run: |
+          GEMINI_URL=https://generativelanguage.googleapis.com/v1beta/openai
+          if [ -n "$GROQ_KEY" ]; then
+            echo "Answers: Groq"
+            {
+              echo "RAG_LLM_BASE_URL=https://api.groq.com/openai/v1"
+              echo "RAG_LLM_API_KEY=$GROQ_KEY"
+              echo "RAG_LLM_MODEL=${V_MODEL:-openai/gpt-oss-120b}"
+              echo "RAG_LLM_FALLBACK_MODELS=${V_FALLBACK:-openai/gpt-oss-20b}"
+              echo "RAG_LLM_MIN_INTERVAL_S=${V_INTERVAL:-20}"
+              echo "RAG_LLM_REASONING_EFFORT=low"
+            } >> "$GITHUB_ENV"
+          else
+            echo "Answers: Gemini"
+            {
+              echo "RAG_LLM_BASE_URL=$GEMINI_URL"
+              echo "RAG_LLM_API_KEY=$GEMINI_KEY"
+              echo "RAG_LLM_MODEL=${V_MODEL:-gemini-flash-latest}"
+              echo "RAG_LLM_FALLBACK_MODELS=${V_FALLBACK:-gemini-flash-lite-latest}"
+              echo "RAG_LLM_MIN_INTERVAL_S=${V_INTERVAL:-13}"
+            } >> "$GITHUB_ENV"
+          fi
+          # The RAGAS judge stays on Gemini Flash-Lite, a separate quota from the answers.
+          {
+            echo "RAG_JUDGE_BASE_URL=$GEMINI_URL"
+            echo "RAG_JUDGE_API_KEY=$GEMINI_KEY"
+            echo "RAG_JUDGE_MODEL=${RAG_JUDGE_MODEL_VAR:-gemini-flash-lite-latest}"
+          } >> "$GITHUB_ENV"
       - name: Use the hosted reranker when its key is set
         if: steps.keys.outputs.ready == 'true'
         run: |
