@@ -302,3 +302,39 @@ def test_reasoning_effort_is_sent_only_when_set():
     t2, seen2 = transport([ok])
     OpenAICompatibleLLM("https://x.test", "k", "m", transport=t2, sleep=no_sleep).complete("s", "u")
     assert "reasoning_effort" not in json.loads(seen2[0].content)
+
+
+
+def test_fallback_returns_to_the_primary_model_after_cooldown():
+    from rag.providers.http import FallbackLLM, QuotaExhausted
+
+    class M:
+        def __init__(self, name, fail):
+            self.model, self.fail, self.calls = name, fail, 0
+        def complete(self, s, u):
+            self.calls += 1
+            if self.fail[0]:
+                raise QuotaExhausted("x")
+            return self.model
+
+    now = [0.0]
+    primary_fails = [True]
+    a, b = M("a", primary_fails), M("b", [False])
+    llm = FallbackLLM([a, b], clock=lambda: now[0])
+    assert llm.complete("s", "u") == "b"
+    primary_fails[0] = False
+    now[0] = 100
+    assert llm.complete("s", "u") == "b"          # still within the cooldown
+    now[0] = 700
+    assert llm.complete("s", "u") == "a"          # back on the primary
+
+
+def test_backup_provider_is_appended_with_the_embedding_key():
+    from rag.config import Settings
+    from rag.factory import build_pipeline
+    s = Settings(providers="http", llm_base_url="https://groq.test", llm_api_key="g", llm_model="m1",
+                 embed_base_url="https://gem.test", embed_api_key="e", embed_model="emb",
+                 llm_backup_base_url="https://gem.test", llm_backup_model="flash-lite")
+    p = build_pipeline(s)
+    assert [m.model for m in p.llm.models] == ["m1", "flash-lite"]
+    assert p.llm.models[-1].http.headers["Authorization"] == "Bearer e"

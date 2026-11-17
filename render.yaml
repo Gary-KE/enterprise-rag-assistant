@@ -19,6 +19,11 @@ services:
         value: openai/gpt-oss-20b
       - key: RAG_LLM_REASONING_EFFORT
         value: low
+      # When Groq's free daily quota runs out, answers fall back to Gemini, using the embedding key.
+      - key: RAG_LLM_BACKUP_BASE_URL
+        value: https://generativelanguage.googleapis.com/v1beta/openai
+      - key: RAG_LLM_BACKUP_MODEL
+        value: gemini-flash-lite-latest
       - key: RAG_EMBED_BASE_URL
         value: https://generativelanguage.googleapis.com/v1beta/openai
       - key: RAG_EMBED_MODEL

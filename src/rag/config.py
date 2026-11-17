@@ -46,6 +46,9 @@ class Settings:
     llm_model: str = ""
     llm_fallback_models: str = ""             # comma-separated, tried in order when a model's quota runs out
     llm_min_interval_s: float = 0.0           # minimum seconds between model calls (pacing)
+    llm_backup_base_url: str = ""             # a second provider used when every model above is out of quota
+    llm_backup_model: str = ""
+    llm_backup_api_key: str = ""              # empty = reuse the embedding key (same provider, e.g. Gemini)
     llm_reasoning_effort: str = ""            # "low" | "medium" | "high" for reasoning models; empty = provider default
     embed_base_url: str = ""
     embed_api_key: str = ""
@@ -82,6 +85,9 @@ class Settings:
         grab("RAG_LLM_FALLBACK_MODELS", "llm_fallback_models")
         grab("RAG_LLM_MIN_INTERVAL_S", "llm_min_interval_s", float)
         grab("RAG_LLM_REASONING_EFFORT", "llm_reasoning_effort")
+        grab("RAG_LLM_BACKUP_BASE_URL", "llm_backup_base_url")
+        grab("RAG_LLM_BACKUP_MODEL", "llm_backup_model")
+        grab("RAG_LLM_BACKUP_API_KEY", "llm_backup_api_key")
         grab("RAG_EMBED_BASE_URL", "embed_base_url")
         grab("RAG_EMBED_API_KEY", "embed_api_key")
         grab("RAG_EMBED_MODEL", "embed_model")

@@ -41,6 +41,10 @@ def build_pipeline(settings: Settings) -> Pipeline:
         clients = [OpenAICompatibleLLM(settings.llm_base_url, settings.llm_api_key, name, timeout=60.0,
                                        min_interval_s=settings.llm_min_interval_s,
                                        reasoning_effort=settings.llm_reasoning_effort) for name in names]
+        if settings.llm_backup_base_url and settings.llm_backup_model:
+            clients.append(OpenAICompatibleLLM(
+                settings.llm_backup_base_url, settings.llm_backup_api_key or settings.embed_api_key,
+                settings.llm_backup_model, timeout=60.0))
         llm = clients[0] if len(clients) == 1 else FallbackLLM(clients)
     else:
         embedder = HashingEmbedder(settings.embed_dim)

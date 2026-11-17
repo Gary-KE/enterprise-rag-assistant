@@ -184,17 +184,24 @@ class FallbackLLM:
     Only QuotaExhausted triggers a switch: other errors (bad request, outage) are raised as they are.
     """
 
-    def __init__(self, models: list):
+    RETRY_PRIMARY_AFTER_S = 600.0   # go back to the first model after 10 minutes: per-minute limits clear
+
+    def __init__(self, models: list, clock: Callable[[], float] = time.monotonic):
         if not models:
             raise ValueError("FallbackLLM needs at least one model")
         self.models = models
         self.current = 0
+        self.clock = clock
+        self._switched_at: Optional[float] = None
 
     @property
     def model(self) -> str:
         return self.models[self.current].model
 
     def complete(self, system: str, user: str) -> str:
+        if self.current and self._switched_at is not None and \
+                self.clock() - self._switched_at >= self.RETRY_PRIMARY_AFTER_S:
+            self.current, self._switched_at = 0, None
         while True:
             try:
                 return self.models[self.current].complete(system, user)
@@ -202,3 +209,4 @@ class FallbackLLM:
                 if self.current + 1 >= len(self.models):
                     raise
                 self.current += 1
+                self._switched_at = self.clock()
