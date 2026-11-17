@@ -1,8 +1,8 @@
 name: Fetch a source document
 
-# Downloads one public document from an https URL and keeps it as a build artifact, so it can be
-# checked by hand before it is committed to data/corpus/ and pinned in data/corpus.lock.json.
-# Started by hand only. Nothing is committed by this workflow.
+# Downloads one public document from an https URL and puts it on a separate review branch
+# (fetched-sources/<name>), so it can be checked by hand before it is committed to data/corpus/ and
+# pinned in data/corpus.lock.json. Started by hand only. Nothing is changed on main.
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ on:
         required: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   fetch:
@@ -36,8 +36,17 @@ jobs:
           file "out/$NAME"
           sha256sum "out/$NAME" | tee out/SHA256SUMS
           ls -l out
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fetched-source
-          path: out
-          retention-days: 3
+      - name: Put it on a review branch
+        env:
+          NAME: ${{ github.event.inputs.name }}
+          REPO: ${{ github.repository }}
+          TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd out
+          git init -q -b "fetched-sources/$NAME"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Fetched source for review: $NAME"
+          git push -q --force "https://x-access-token:${TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/fetched-sources/$NAME"
