@@ -14,6 +14,8 @@ import httpx
 from rag.providers.base import ProviderError
 
 RETRY_STATUS = {429, 500, 502, 503, 504}
+_RETRY_IN = re.compile(r"retry in ([0-9]+(?:\.[0-9]+)?)\s*s", re.I)
+_DAILY = re.compile(r"per ?day|perday|daily", re.I)
 _TOKENISH = re.compile(r"[A-Za-z0-9_.-]{32,}")
 
 
@@ -38,10 +40,15 @@ class _Client:
         attempts: int = 4,
         transport: Optional[httpx.BaseTransport] = None,
         sleep: Callable[[float], None] = time.sleep,
+        min_interval_s: float = 0.0,
+        clock: Callable[[], float] = time.monotonic,
     ):
         self.model = model
         self.attempts = attempts
         self.sleep = sleep
+        self.min_interval_s = min_interval_s   # pacing for per-minute limits (free Gemini: ~5 per minute)
+        self.clock = clock
+        self._last_call: Optional[float] = None
         self.http = httpx.Client(
             base_url=base_url.rstrip("/"),
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -49,14 +56,30 @@ class _Client:
             transport=transport,
         )
 
+    def _pace(self) -> None:
+        if self.min_interval_s > 0 and self._last_call is not None:
+            wait = self.min_interval_s - (self.clock() - self._last_call)
+            if wait > 0:
+                self.sleep(wait)
+        self._last_call = self.clock()
+
     def _post(self, path: str, payload: dict) -> dict:
         last_error = "unknown error"
+        waited_for_quota = False
         for attempt in range(self.attempts):
             try:
+                self._pace()
                 resp = self.http.post(path, json=payload)
                 if resp.status_code == 429 and "quota" in _reason(resp).lower():
-                    # Quota exhausted is not a momentary rate limit: retrying only burns more quota.
-                    raise ProviderError(f"{path} failed with HTTP 429 (quota exhausted): {_reason(resp)}")
+                    reason = _reason(resp)
+                    hint = _RETRY_IN.search(resp.text)
+                    # A per-minute quota says "retry in Ns": wait once and try again. A daily quota, or a
+                    # second hit, is exhausted for now: retrying only burns more quota.
+                    if hint and not _DAILY.search(resp.text) and not waited_for_quota:
+                        waited_for_quota = True
+                        self.sleep(min(float(hint.group(1)) + 1.0, 70.0))
+                        continue
+                    raise QuotaExhausted(f"{path} failed with HTTP 429 (quota exhausted): {reason}")
                 if resp.status_code in RETRY_STATUS:
                     last_error = f"HTTP {resp.status_code}: {_reason(resp)}"
                 elif resp.status_code >= 400:
@@ -68,6 +91,10 @@ class _Client:
             if attempt < self.attempts - 1:
                 self.sleep(0.5 * (2 ** attempt))
         raise ProviderError(f"{path} failed after {self.attempts} attempts ({last_error})")
+
+
+class QuotaExhausted(ProviderError):
+    """The provider's quota for this model is used up; another model may still work."""
 
 
 class OpenAICompatibleLLM(_Client):
@@ -119,3 +146,29 @@ class OpenAICompatibleEmbedder(_Client):
                 f"embedding size {len(vectors[0])} does not match RAG_EMBED_DIM={self.dimensions}; "
                 "set RAG_EMBED_DIM to the model's size (and the database column to match)")
         return vectors
+
+
+class FallbackLLM:
+    """Try the primary model; when its quota is exhausted, move to the next model and stay there.
+
+    Only QuotaExhausted triggers a switch: other errors (bad request, outage) are raised as they are.
+    """
+
+    def __init__(self, models: list):
+        if not models:
+            raise ValueError("FallbackLLM needs at least one model")
+        self.models = models
+        self.current = 0
+
+    @property
+    def model(self) -> str:
+        return self.models[self.current].model
+
+    def complete(self, system: str, user: str) -> str:
+        while True:
+            try:
+                return self.models[self.current].complete(system, user)
+            except QuotaExhausted:
+                if self.current + 1 >= len(self.models):
+                    raise
+                self.current += 1

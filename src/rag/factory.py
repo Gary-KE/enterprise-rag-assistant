@@ -36,7 +36,11 @@ def build_pipeline(settings: Settings) -> Pipeline:
             settings.embed_base_url, settings.embed_api_key, settings.embed_model,
             dimensions=settings.embed_dim,
         )
-        llm = OpenAICompatibleLLM(settings.llm_base_url, settings.llm_api_key, settings.llm_model, timeout=60.0)
+        from rag.providers.http import FallbackLLM
+        names = [settings.llm_model] + [m.strip() for m in settings.llm_fallback_models.split(",") if m.strip()]
+        clients = [OpenAICompatibleLLM(settings.llm_base_url, settings.llm_api_key, name, timeout=60.0,
+                                       min_interval_s=settings.llm_min_interval_s) for name in names]
+        llm = clients[0] if len(clients) == 1 else FallbackLLM(clients)
     else:
         embedder = HashingEmbedder(settings.embed_dim)
         llm = FakeLLM()

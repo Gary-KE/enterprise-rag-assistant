@@ -175,3 +175,71 @@ def test_plain_rate_limit_is_still_retried():
     t, seen = transport([(429, {"error": {"message": "Too many requests"}}), (200, {"choices": [{"message": {"content": "ok"}}]})])
     assert OpenAICompatibleLLM("https://x.test", "k", "m", transport=t, sleep=no_sleep).complete("s", "u") == "ok"
     assert len(seen) == 2
+
+
+def test_per_minute_quota_waits_once_then_retries():
+    slept = []
+    t, seen = transport([
+        (429, {"error": {"message": "You exceeded your current quota. Please retry in 12.5s."}}),
+        (200, {"choices": [{"message": {"content": "ok"}}]}),
+    ])
+    llm = OpenAICompatibleLLM("https://x.test", "k", "m", transport=t, sleep=slept.append)
+    assert llm.complete("s", "u") == "ok" and len(seen) == 2 and slept == [13.5]
+
+
+def test_daily_quota_is_not_waited_for():
+    from rag.providers.http import QuotaExhausted
+    t, seen = transport([(429, {"error": {"message": "You exceeded your current quota: GenerateRequestsPerDay. Please retry in 9s."}})])
+    with pytest.raises(QuotaExhausted):
+        OpenAICompatibleLLM("https://x.test", "k", "m", transport=t, sleep=no_sleep).complete("s", "u")
+    assert len(seen) == 1
+
+
+def test_pacing_spaces_out_calls():
+    now = [0.0]
+    slept = []
+
+    def sleep(s):
+        slept.append(round(s, 2))
+        now[0] += s
+
+    t, _ = transport([(200, {"choices": [{"message": {"content": "ok"}}]})])
+    llm = OpenAICompatibleLLM("https://x.test", "k", "m", transport=t, sleep=sleep,
+                              min_interval_s=13, clock=lambda: now[0])
+    llm.complete("s", "u")
+    now[0] += 3
+    llm.complete("s", "u")
+    assert slept == [10.0]
+
+
+def test_fallback_switches_on_quota_and_stays():
+    from rag.providers.http import FallbackLLM
+    quota = {"error": {"message": "You exceeded your current quota (per day)"}}
+    t1, seen1 = transport([(429, quota)])
+    t2, seen2 = transport([(200, {"choices": [{"message": {"content": "from lite"}}]})])
+    fb = FallbackLLM([OpenAICompatibleLLM("https://x.test", "k", "flash", transport=t1, sleep=no_sleep),
+                      OpenAICompatibleLLM("https://x.test", "k", "lite", transport=t2, sleep=no_sleep)])
+    assert fb.complete("s", "u") == "from lite" and fb.model == "lite"
+    assert fb.complete("s", "u") == "from lite"
+    assert len(seen1) == 1 and len(seen2) == 2
+
+
+def test_fallback_does_not_hide_other_errors():
+    from rag.providers.http import FallbackLLM
+    t1, _ = transport([(400, {"error": {"message": "bad request"}})])
+    t2, seen2 = transport([(200, {"choices": [{"message": {"content": "x"}}]})])
+    fb = FallbackLLM([OpenAICompatibleLLM("https://x.test", "k", "a", transport=t1, sleep=no_sleep),
+                      OpenAICompatibleLLM("https://x.test", "k", "b", transport=t2, sleep=no_sleep)])
+    with pytest.raises(ProviderError, match="bad request"):
+        fb.complete("s", "u")
+    assert len(seen2) == 0
+
+
+def test_factory_builds_fallback_chain():
+    from rag.factory import build_pipeline
+    from rag.providers.http import FallbackLLM
+    s = Settings(providers="http", llm_base_url="https://x.test", llm_api_key="k", llm_model="flash",
+                 llm_fallback_models="lite, other ", embed_base_url="https://x.test", embed_api_key="k",
+                 embed_model="e")
+    p = build_pipeline(s)
+    assert isinstance(p.llm, FallbackLLM) and [m.model for m in p.llm.models] == ["flash", "lite", "other"]

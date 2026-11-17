@@ -44,6 +44,8 @@ class Settings:
     llm_base_url: str = ""
     llm_api_key: str = ""
     llm_model: str = ""
+    llm_fallback_models: str = ""             # comma-separated, tried in order when a model's quota runs out
+    llm_min_interval_s: float = 0.0           # minimum seconds between model calls (pacing)
     embed_base_url: str = ""
     embed_api_key: str = ""
     embed_model: str = ""
@@ -76,6 +78,8 @@ class Settings:
         grab("RAG_LLM_BASE_URL", "llm_base_url")
         grab("RAG_LLM_API_KEY", "llm_api_key")
         grab("RAG_LLM_MODEL", "llm_model")
+        grab("RAG_LLM_FALLBACK_MODELS", "llm_fallback_models")
+        grab("RAG_LLM_MIN_INTERVAL_S", "llm_min_interval_s", float)
         grab("RAG_EMBED_BASE_URL", "embed_base_url")
         grab("RAG_EMBED_API_KEY", "embed_api_key")
         grab("RAG_EMBED_MODEL", "embed_model")

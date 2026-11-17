@@ -137,7 +137,10 @@ The offline gate sits just below these, so any change that makes retrieval or ci
 **First live attempt, 17 November 2026:** with Gemini embeddings, retrieval found the right passage in the top 5
 for 43 of 48 answerable questions, most at rank 1. The answering model then returned HTTP 429 "quota exceeded"
 on the free tier, so no answer-quality or RAGAS scores exist yet. The pipeline now checks the model before a run
-and does not retry quota errors. *Live answer and RAGAS results: pending a run with available quota.*
+and does not retry quota errors. It now also paces calls for free per-minute limits (one every 13 s by default),
+waits once when the provider says "retry in N s", and switches to `gemini-flash-lite-latest` when the main
+model's daily quota runs out (`RAG_LLM_FALLBACK_MODELS`). The RAGAS judge uses Flash-Lite by default.
+*Live answer and RAGAS results: pending a run with available quota.*
 
 ## Security
 

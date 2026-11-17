@@ -74,12 +74,25 @@ def main() -> int:
           f"dim={settings.embed_dim} reranker={settings.rerank_model or 'baseline'} min_relevance={settings.min_relevance}")
     if args.mode == "live":
         from rag.providers.http import OpenAICompatibleLLM
-        try:   # fail in seconds, with the provider's reason, instead of after 58 failed questions
-            OpenAICompatibleLLM(settings.llm_base_url, settings.llm_api_key, settings.llm_model).complete(
-                "Reply with the single word: ok", "ping")
-        except Exception as exc:
-            raise SystemExit(f"preflight: the answer model '{settings.llm_model}' is not usable: {exc}")
-        print("preflight: answer model reachable")
+        # Fail in seconds, with the provider's reason, instead of after 58 failed questions.
+        # Try each configured model in turn and start with the first one that answers.
+        names = [settings.llm_model] + [m.strip() for m in settings.llm_fallback_models.split(",") if m.strip()]
+        usable, errors = [], []
+        for name in names:
+            try:
+                OpenAICompatibleLLM(settings.llm_base_url, settings.llm_api_key, name).complete(
+                    "Reply with the single word: ok", "ping")
+                usable.append(name)
+                break
+            except Exception as exc:
+                errors.append(f"{name}: {exc}")
+        if not usable:
+            raise SystemExit("preflight: no answer model is usable:\n  " + "\n  ".join(errors))
+        if usable[0] != settings.llm_model:
+            print(f"preflight: '{settings.llm_model}' unusable, starting with '{usable[0]}'")
+            rest = names[names.index(usable[0]) + 1:]
+            settings.llm_model, settings.llm_fallback_models = usable[0], ",".join(rest)
+        print(f"preflight: answer model '{usable[0]}' reachable")
     pipeline = build_indexed_pipeline(settings)
     items = load_golden(GOLDEN)
     results = []
@@ -95,7 +108,9 @@ def main() -> int:
             raise SystemExit("--ragas needs --mode live (it uses a judge model)")
         from rag.evaluation.ragas_runner import score_with_ragas
         judge_model = os.environ.get("RAG_JUDGE_MODEL") or settings.llm_model
-        score_with_ragas(results, settings.llm_base_url, settings.llm_api_key, judge_model, limit=args.ragas_limit)
+        pause = float(os.environ.get("RAG_JUDGE_PAUSE_S", "13"))   # ~5 judge calls per minute on free tiers
+        score_with_ragas(results, settings.llm_base_url, settings.llm_api_key, judge_model,
+                         limit=args.ragas_limit, pause_s=pause)
 
     summary = summarise(results)
     thresholds = json.loads(THRESHOLDS.read_text())[args.mode]
@@ -114,6 +129,9 @@ def main() -> int:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
     write_report(out / "report.md", args.mode, summary, failures, results, settings)
 
+    final_model = getattr(pipeline.llm, "model", settings.llm_model)
+    if args.mode == "live" and final_model != settings.llm_model:
+        print(f"note: quota ran out mid-run; later answers came from '{final_model}'")
     print(json.dumps(summary, indent=2))
     if failures:
         print("\nGATE FAILED:\n  " + "\n  ".join(failures))

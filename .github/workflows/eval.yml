@@ -23,11 +23,14 @@ concurrency:
 jobs:
   live-eval:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       RAG_PROVIDERS: http
       RAG_LLM_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai
       RAG_LLM_MODEL: ${{ vars.RAG_LLM_MODEL || 'gemini-flash-latest' }}
+      RAG_LLM_FALLBACK_MODELS: ${{ vars.RAG_LLM_FALLBACK_MODELS || 'gemini-flash-lite-latest' }}
+      RAG_LLM_MIN_INTERVAL_S: ${{ vars.RAG_LLM_MIN_INTERVAL_S || '13' }}
+      RAG_JUDGE_MODEL: ${{ vars.RAG_JUDGE_MODEL || vars.RAG_LLM_FALLBACK_MODELS || 'gemini-flash-lite-latest' }}
       RAG_EMBED_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai
       RAG_EMBED_MODEL: ${{ vars.RAG_EMBED_MODEL || 'gemini-embedding-2' }}
       RAG_EMBED_DIM: ${{ vars.RAG_EMBED_DIM || '768' }}
